@@ -15,16 +15,14 @@
 - rolling upgrade redis pods
 
 
-kubectl rc info <pod> -n <namespace>
+`kubectl rc info <pod> -n <namespace>`
     
-kubectl rc nodes <pod> -n <namespace>
+`kubectl rc nodes <pod> -n <namespace>`
 
-    redis-cluster-0  10.0.21.4:6379 master <slots>  <node-id>
-    redis-cluster-1  10.0.21.2:6379 slave <slots>  <node-id>
+    redis-cluster-0  <node-id> 10.0.21.4 master <slots> 
+    redis-cluster-1  <node-id> 10.0.21.2 <slave of redis-cluster-0> <slots> 
     ...
 
-kubectl rc replace <pod> -n <namespace>
+`kubectl rc add-slave <target-pod> <slave-pod> -n <namespace>`
 
-kubectl rc rollout <pod> -n <namespace>
-
-kubectl rc add-slave <target-pod> -n <namespace>
+`kubectl rc failover <slave-pod> -n <namespace>`

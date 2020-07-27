@@ -22,15 +22,9 @@ THE SOFTWARE.
 package cmd
 
 import (
-	"context"
-	"fmt"
-	"k8s.io/client-go/tools/remotecommand"
-	"os"
-
 	"github.com/spf13/cobra"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/scheme"
+
+	"github.com/monsterxx03/kuberc/pkg/redis"
 )
 
 // infoCmd represents the info command
@@ -39,28 +33,11 @@ var infoCmd = &cobra.Command{
 	Short: "Get redis cluster info",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), args[0], metav1.GetOptions{})
+		p, err := redis.NewRedisPod(args[0], namespace, redisPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}
-		req := clientset.CoreV1().RESTClient().Post().Resource("pods").Name(pod.Name).Namespace(pod.Namespace).SubResource("exec")
-		req.VersionedParams(&corev1.PodExecOptions{
-			Command: []string{"sh", "-c", fmt.Sprintf("redis-cli -p %d cluster info", redisPort)},
-			Stdin:   true,
-			Stdout:  true,
-			Stderr:  true,
-			TTY:     true,
-		}, scheme.ParameterCodec)
-		exec, err := remotecommand.NewSPDYExecutor(restcfg, "POST", req.URL())
-		if err != nil {
-			return nil
-		}
-		err = exec.Stream(remotecommand.StreamOptions{
-			Stdin:  os.Stdin,
-			Stdout: os.Stdout,
-			Stderr: os.Stderr,
-		})
-		if err != nil {
+		if err := p.ClusterInfo(); err != nil {
 			return err
 		}
 		return nil

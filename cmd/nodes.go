@@ -22,8 +22,7 @@ THE SOFTWARE.
 package cmd
 
 import (
-	"fmt"
-
+	"github.com/monsterxx03/kuberc/pkg/redis"
 	"github.com/spf13/cobra"
 )
 
@@ -32,8 +31,13 @@ var nodesCmd = &cobra.Command{
 	Use:   "nodes <pod>",
 	Short: "List nodes in redis cluster",
 	Args: cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("nodes called")
+	RunE: func(cmd *cobra.Command, args []string) error {
+		p, err := redis.NewRedisPod(args[0], namespace, redisPort, clientset, restcfg)
+		if err != nil {
+			return err
+		}
+		p.ClusterNodes()
+		return nil
 	},
 }
 
