@@ -74,6 +74,6 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&namespace, "namespace", "n", "default", "namespace")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "kubeconfig used for kubectl, will try to load from $KUBECONFIG first")
-	rootCmd.PersistentFlags().IntVarP(&redisPort, "port", "p", 6379, "redis port")
+	rootCmd.PersistentFlags().BoolP("disable-port-forwarding", "d", false, "enable port forwarding")
 }
 

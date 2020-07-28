@@ -22,6 +22,7 @@ THE SOFTWARE.
 package cmd
 
 import (
+	"fmt"
 	"github.com/spf13/cobra"
 
 	"github.com/monsterxx03/kuberc/pkg/redis"
@@ -37,13 +38,16 @@ var infoCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := p.ClusterInfo(); err != nil {
+		if res, err := p.ClusterInfo(); err != nil {
 			return err
+		} else {
+			fmt.Println(res)
 		}
 		return nil
 	},
 }
 
 func init() {
+	infoCmd.Flags().IntVar(&redisPort, "port", 6379, "redis port")
 	rootCmd.AddCommand(infoCmd)
 }

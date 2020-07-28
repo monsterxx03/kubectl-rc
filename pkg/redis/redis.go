@@ -46,18 +46,24 @@ func NewRedisNode(info string) *RedisNode {
 	ip := strings.Split(parts[1], ":")[0]
 	flags := strings.Split(parts[2], ",")
 	epoch, _ := strconv.Atoi(parts[6])
+	slots := make([]string, 0, 1)
+	for _, slot := range parts[8:] {
+		slots = append(slots, slot)
+	}
 	return &RedisNode{
 		ID:        parts[0],
 		IP:        ip,
 		Flags:     flags,
 		Epoch:     epoch,
 		LinkState: parts[7],
+		Slots: slots,
 	}
 }
 
 type RedisPod struct {
 	pod       *corev1.Pod
 	port      int
+	nodeID    string
 	clientset *kubernetes.Clientset
 	restcfg   *restclient.Config
 }
@@ -70,8 +76,52 @@ func NewRedisPod(podname string, namespace string, port int, clientset *kubernet
 	return &RedisPod{pod: pod, port: port, clientset: clientset, restcfg: restcfg}, nil
 }
 
-func (r *RedisPod) ClusterInfo() error {
-	result, err := r.execute("cluster info")
+func (r *RedisPod) GetIP() string {
+	return r.pod.Status.PodIP
+}
+
+func (r *RedisPod) GetNodeID() (nodeID string, err error) {
+	nodeID, err = r.redisCli("cluster myid")
+	return
+}
+
+func (r *RedisPod) ClusterInfo() (result string, err error) {
+	result, err = r.redisCli("cluster info")
+	return
+}
+
+func (r *RedisPod) clusterNodes() (nodes []*RedisNode, err error) {
+	result, err := r.redisCli("cluster nodes")
+	if err != nil {
+		return nil, err
+	}
+	for _, line := range strings.Split(result, "\n") {
+		if line != "" {
+			nodes = append(nodes, NewRedisNode(line))
+		}
+	}
+	return
+}
+
+// ClusterNodes return redis nodes with pod info
+func (r *RedisPod) ClusterNodes() (nodes []*RedisNode, err error) {
+	m, err := getPodIPMapInNamespace(r.clientset, r.pod.Namespace)
+	if err != nil {
+		return nil, err
+	}
+	nodes, err = r.clusterNodes()
+	for _, node := range nodes {
+		p, ok := m[node.IP]
+		if !ok {
+			return nil, errors.New("can't find pod for ip " + node.IP)
+		}
+		node.Pod = &p
+	}
+	return
+}
+
+func (r *RedisPod) ClusterCheck() error {
+	result, err := r.redisCliCluster(fmt.Sprintf("check localhost:%d", r.port))
 	if err != nil {
 		return err
 	}
@@ -79,33 +129,36 @@ func (r *RedisPod) ClusterInfo() error {
 	return nil
 }
 
-func (r *RedisPod) ClusterNodes() error {
-	result, err := r.execute("cluster nodes")
-	if err != nil {
-		return err
-	}
-	m, err := getPodIPMapInNamespace(r.clientset, r.pod.Namespace)
-	if err != nil {
-		return err
-	}
-	for _, line := range strings.Split(result, "\n") {
-		if line != "" {
-			node := NewRedisNode(line)
-			p, ok := m[node.IP]
-			if !ok {
-				return errors.New("can't find pod for ip " + node.IP)
-			}
-			node.Pod = &p
-			fmt.Println(node)
+func (r *RedisPod) ClusterSlots() (result string, err error) {
+	result, err = r.redisCli("cluster slots")
+	return
+}
+
+func (r *RedisPod) ClusterAddNode(newPod *RedisPod, slave bool) (result string, err error) {
+	cmd := fmt.Sprintf("add-node %s:%d %s:%d", newPod.GetIP(), r.port, r.GetIP(), r.port)
+	if slave {
+		nodeID, err := r.GetNodeID()
+		if err != nil {
+			return "", err
 		}
+		cmd = fmt.Sprintf("%s --cluster-slave --cluster-master-id %s", cmd, nodeID)
 	}
-	return nil
+	result, err = r.redisCliCluster(cmd)
+	return
+}
+
+func (r *RedisPod) redisCliCluster(cmd string) (string, error) {
+	return r.execute(fmt.Sprintf("redis-cli --cluster %s", cmd))
+}
+
+func (r *RedisPod) redisCli(cmd string) (string, error) {
+	return r.execute(fmt.Sprintf("redis-cli -p %d %s", r.port, cmd))
 }
 
 func (r *RedisPod) execute(cmd string) (string, error) {
 	req := r.clientset.CoreV1().RESTClient().Post().Resource("pods").Name(r.pod.Name).Namespace(r.pod.Namespace).SubResource("exec")
 	req.VersionedParams(&corev1.PodExecOptions{
-		Command: []string{"sh", "-c", fmt.Sprintf("redis-cli -p %d %s", r.port, cmd)},
+		Command: []string{"sh", "-c", cmd},
 		Stdin:   false,
 		Stderr:  true,
 		Stdout:  true,
@@ -134,3 +187,4 @@ func getPodIPMapInNamespace(clientset *kubernetes.Clientset, namespace string) (
 	}
 	return m, err
 }
+

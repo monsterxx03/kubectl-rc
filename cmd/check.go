@@ -22,33 +22,27 @@ THE SOFTWARE.
 package cmd
 
 import (
-	"fmt"
 	"github.com/monsterxx03/kuberc/pkg/redis"
 	"github.com/spf13/cobra"
 )
 
-// nodesCmd represents the nodes command
-var nodesCmd = &cobra.Command{
-	Use:   "nodes <pod>",
-	Short: "List nodes in redis cluster",
-	Args: cobra.ExactArgs(1),
+// checkCmd represents the check command
+var checkCmd = &cobra.Command{
+	Use:   "check",
+	Short: "Check nodes for slots configuration",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := redis.NewRedisPod(args[0], namespace, redisPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}
-		if nodes, err := p.ClusterNodes(); err != nil {
+		if err := p.ClusterCheck(); err != nil {
 			return err
-		} else {
-			for _, n := range nodes {
-				fmt.Println(n)
-			}
 		}
 		return nil
 	},
 }
 
 func init() {
-	nodesCmd.Flags().IntVar(&redisPort, "port", 6379, "redis port")
-	rootCmd.AddCommand(nodesCmd)
+	checkCmd.Flags().IntVar(&redisPort, "port", 6379, "redis port")
+	rootCmd.AddCommand(checkCmd)
 }
