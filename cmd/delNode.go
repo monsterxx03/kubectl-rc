@@ -27,34 +27,25 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// addNodeCmd represents the addNode command
-var addNodeCmd = &cobra.Command{
-	Use:   "add-node <new pod> <existing pod>",
-	Short: "Make a pod join redis-cluster",
-	Args: cobra.ExactArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		newPod, err := redis.NewRedisPod(args[0], namespace, redisPort, clientset, restcfg)
+// delNodeCmd represents the delNode command
+var delNodeCmd = &cobra.Command{
+	Use:   "del-node <pod>",
+	Short: "Delete a node from redis cluster",
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error{
+		pod, err := redis.NewRedisPod(args[0], namespace, redisPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}
-		existingPod, err := redis.NewRedisPod(args[1], namespace, redisPort, clientset, restcfg)
-		if err != nil {
+		if res, err := pod.ClusterDelNode(); err != nil {
 			return err
+		} else {
+			fmt.Println(res)
 		}
-		slave, err := cmd.Flags().GetBool("slave")
-		if err != nil {
-			return err
-		}
-		res, err := existingPod.ClusterAddNode(newPod, slave)
-		if err != nil {
-			return err
-		}
-		fmt.Println(res)
 		return nil
 	},
 }
 
 func init() {
-	addNodeCmd.Flags().Bool("slave", false, "make <new pod> slave of <existing pod>")
-	rootCmd.AddCommand(addNodeCmd)
+	rootCmd.AddCommand(delNodeCmd)
 }

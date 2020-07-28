@@ -30,7 +30,7 @@ import (
 // slotsCmd represents the slots command
 var slotsCmd = &cobra.Command{
 	Use:   "slots <pod>",
-	Short: "get cluster slots info",
+	Short: "Get cluster slots info",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := redis.NewRedisPod(args[0], namespace, redisPort, clientset, restcfg)

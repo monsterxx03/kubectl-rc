@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -81,17 +80,33 @@ func (r *RedisPod) GetIP() string {
 }
 
 func (r *RedisPod) GetNodeID() (nodeID string, err error) {
-	nodeID, err = r.redisCli("cluster myid")
+	if r.nodeID != "" {
+		return r.nodeID, nil
+	}
+	nodeID, err = r.redisCli("cluster myid", true)
+	nodeID = strings.TrimSpace(nodeID)
+	r.nodeID = nodeID
 	return
 }
 
+func (r *RedisPod) isMaster() (bool, error) {
+	result, err := r.redisCli("role", true)
+	if err != nil {
+		return  false, err
+	}
+	if strings.Split(result, "\r\n")[0] == "master" {
+		return true, nil
+	}
+	return false, nil
+}
+
 func (r *RedisPod) ClusterInfo() (result string, err error) {
-	result, err = r.redisCli("cluster info")
+	result, err = r.redisCli("cluster info", false)
 	return
 }
 
 func (r *RedisPod) clusterNodes() (nodes []*RedisNode, err error) {
-	result, err := r.redisCli("cluster nodes")
+	result, err := r.redisCli("cluster nodes", false)
 	if err != nil {
 		return nil, err
 	}
@@ -130,13 +145,20 @@ func (r *RedisPod) ClusterCheck() error {
 }
 
 func (r *RedisPod) ClusterSlots() (result string, err error) {
-	result, err = r.redisCli("cluster slots")
+	result, err = r.redisCli("cluster slots", false)
 	return
 }
 
 func (r *RedisPod) ClusterAddNode(newPod *RedisPod, slave bool) (result string, err error) {
 	cmd := fmt.Sprintf("add-node %s:%d %s:%d", newPod.GetIP(), r.port, r.GetIP(), r.port)
 	if slave {
+		isMaster, err := r.isMaster()
+		if err != nil {
+			return "", err
+		}
+		if !isMaster {
+			return "", errors.New(fmt.Sprintf("%s is not master, can't add slave for it", r.pod.Name))
+		}
 		nodeID, err := r.GetNodeID()
 		if err != nil {
 			return "", err
@@ -147,16 +169,31 @@ func (r *RedisPod) ClusterAddNode(newPod *RedisPod, slave bool) (result string, 
 	return
 }
 
+func (r *RedisPod) ClusterDelNode() (result string, err error) {
+	nodeID, err := r.GetNodeID()
+	if err != nil {
+		return "", err
+	}
+	return r.redisCliCluster(fmt.Sprintf("del-node %s:%d %s", r.GetIP(), r.port, nodeID))
+}
+
 func (r *RedisPod) redisCliCluster(cmd string) (string, error) {
 	return r.execute(fmt.Sprintf("redis-cli --cluster %s", cmd))
 }
 
-func (r *RedisPod) redisCli(cmd string) (string, error) {
-	return r.execute(fmt.Sprintf("redis-cli -p %d %s", r.port, cmd))
+func (r *RedisPod) redisCli(cmd string, raw bool) (string, error) {
+	var c string
+	if raw {
+		c = fmt.Sprintf("redis-cli --raw -p %d %s ", r.port, cmd)
+	} else {
+		c = fmt.Sprintf("redis-cli -p %d %s", r.port, cmd)
+	}
+	return r.execute(c)
 }
 
 func (r *RedisPod) execute(cmd string) (string, error) {
 	req := r.clientset.CoreV1().RESTClient().Post().Resource("pods").Name(r.pod.Name).Namespace(r.pod.Namespace).SubResource("exec")
+	fmt.Println(cmd)
 	req.VersionedParams(&corev1.PodExecOptions{
 		Command: []string{"sh", "-c", cmd},
 		Stdin:   false,
@@ -169,11 +206,13 @@ func (r *RedisPod) execute(cmd string) (string, error) {
 		return "", err
 	}
 	buf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
 	err = exec.Stream(remotecommand.StreamOptions{
 		Stdout: buf,
-		Stderr: os.Stderr,
+		Stderr: errBuf,
 	})
 	if err != nil {
+		fmt.Println(buf.String(), errBuf.String())
 		return "", err
 	}
 	return buf.String(), nil
