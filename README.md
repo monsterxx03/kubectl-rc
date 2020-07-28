@@ -1,4 +1,6 @@
-## Mangement kubectl for redis cluster
+##  kubectl plugin for managing redis cluster
+
+Work in progress.
 
 - scale out redis cluster
     - add new pod (scale out sts)

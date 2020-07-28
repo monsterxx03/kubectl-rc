@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -100,9 +101,74 @@ func (r *RedisPod) isMaster() (bool, error) {
 	return false, nil
 }
 
-func (r *RedisPod) ClusterInfo() (result string, err error) {
-	result, err = r.redisCli("cluster info", false)
-	return
+func (r *RedisPod) ClusterInfo() (string, error) {
+	return r.redisCli("cluster info", false)
+}
+
+func (r *RedisPod) ClusterFailover(force, takeover bool) (string, error) {
+	if force && takeover {
+		return "", errors.New("force and takeover can't be passed at sametime during failover")
+	}
+	isMaster, err := r.isMaster()
+	if err != nil {
+		return "", err
+	}
+	if isMaster {
+		return "", errors.New("can't do failover on a master node")
+	}
+	cmd := "cluster failover"
+	if force {
+		cmd += " force"
+	}
+	if takeover {
+		cmd += " takeover"
+	}
+	return r.redisCli(cmd, false)
+}
+
+func (r *RedisPod) ClusterRebalance(weights map[string]string, useEmptyMasters bool, timeout int, simulate bool, batch int, threshold int, replace bool) (string, error) {
+	cmd := fmt.Sprintf("rebalance %s:%d", r.GetIP(), r.port)
+	if weights != nil && len(weights) > 0 {
+		nweights := make([]string, 0, len(weights))
+		nodes, err := r.ClusterNodes()
+		if err != nil {
+			return "", err
+		}
+		m := make(map[string]string) // podName -> nodeID mapping
+		for _, n := range nodes {
+			m[n.Pod.Name] = n.ID
+		}
+		for p, w := range weights {
+			if nid, ok := m[p]; ok {
+				nweights = append(nweights, fmt.Sprintf("%s=%s", nid, w))
+			} else {
+				return "", errors.New(fmt.Sprintf("can't find pod %s in redis cluster nodes", p))
+			}
+		}
+		cmd += " --cluster-weight " + strings.Join(nweights, " ")
+	}
+	if useEmptyMasters {
+		cmd += " --cluster-use-empty-masters"
+	}
+	if timeout <=2000 {
+		return "", errors.New("timeout must > 2000 ms for safety.")
+	}
+	cmd += fmt.Sprintf(" --cluster-timeout %d", timeout)
+	if simulate {
+		cmd += " --cluster-simulate"
+	}
+	if batch <=0 {
+		return "", errors.New("pipeline size must > 0")
+	}
+	cmd += fmt.Sprintf(" --cluster-pipeline %d", batch)
+	if threshold <= 0 {
+		return "", errors.New("threshold should > 0")
+	}
+	cmd += fmt.Sprintf(" --cluster-threshold %d", threshold)
+	if replace {
+		cmd += " --cluster-replace"
+	}
+	return r.redisCliCluster(cmd, true)
 }
 
 func (r *RedisPod) clusterNodes() (nodes []*RedisNode, err error) {
@@ -136,7 +202,7 @@ func (r *RedisPod) ClusterNodes() (nodes []*RedisNode, err error) {
 }
 
 func (r *RedisPod) ClusterCheck() error {
-	result, err := r.redisCliCluster(fmt.Sprintf("check localhost:%d", r.port))
+	result, err := r.redisCliCluster(fmt.Sprintf("check localhost:%d", r.port), false)
 	if err != nil {
 		return err
 	}
@@ -165,7 +231,7 @@ func (r *RedisPod) ClusterAddNode(newPod *RedisPod, slave bool) (result string, 
 		}
 		cmd = fmt.Sprintf("%s --cluster-slave --cluster-master-id %s", cmd, nodeID)
 	}
-	result, err = r.redisCliCluster(cmd)
+	result, err = r.redisCliCluster(cmd, false)
 	return
 }
 
@@ -174,11 +240,11 @@ func (r *RedisPod) ClusterDelNode() (result string, err error) {
 	if err != nil {
 		return "", err
 	}
-	return r.redisCliCluster(fmt.Sprintf("del-node %s:%d %s", r.GetIP(), r.port, nodeID))
+	return r.redisCliCluster(fmt.Sprintf("del-node %s:%d %s", r.GetIP(), r.port, nodeID), false)
 }
 
-func (r *RedisPod) redisCliCluster(cmd string) (string, error) {
-	return r.execute(fmt.Sprintf("redis-cli --cluster %s", cmd))
+func (r *RedisPod) redisCliCluster(cmd string, toStdout bool) (string, error) {
+	return r.execute(fmt.Sprintf("redis-cli --cluster %s", cmd), toStdout)
 }
 
 func (r *RedisPod) redisCli(cmd string, raw bool) (string, error) {
@@ -188,10 +254,10 @@ func (r *RedisPod) redisCli(cmd string, raw bool) (string, error) {
 	} else {
 		c = fmt.Sprintf("redis-cli -p %d %s", r.port, cmd)
 	}
-	return r.execute(c)
+	return r.execute(c, false)
 }
 
-func (r *RedisPod) execute(cmd string) (string, error) {
+func (r *RedisPod) execute(cmd string, toStdout bool) (string, error) {
 	req := r.clientset.CoreV1().RESTClient().Post().Resource("pods").Name(r.pod.Name).Namespace(r.pod.Namespace).SubResource("exec")
 	fmt.Println(cmd)
 	req.VersionedParams(&corev1.PodExecOptions{
@@ -206,13 +272,21 @@ func (r *RedisPod) execute(cmd string) (string, error) {
 		return "", err
 	}
 	buf := new(bytes.Buffer)
-	errBuf := new(bytes.Buffer)
-	err = exec.Stream(remotecommand.StreamOptions{
-		Stdout: buf,
-		Stderr: errBuf,
-	})
+	var opt remotecommand.StreamOptions
+	if toStdout {
+		opt = remotecommand.StreamOptions{
+			Stdout:            os.Stdout,
+			Stderr:            os.Stderr,
+		}
+	} else {
+		opt = remotecommand.StreamOptions{
+			Stdout:            buf,
+			Stderr:            os.Stderr,
+		}
+	}
+	err = exec.Stream(opt)
 	if err != nil {
-		fmt.Println(buf.String(), errBuf.String())
+		fmt.Println(buf.String())
 		return "", err
 	}
 	return buf.String(), nil
