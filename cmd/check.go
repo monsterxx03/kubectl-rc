@@ -43,6 +43,5 @@ var checkCmd = &cobra.Command{
 }
 
 func init() {
-	checkCmd.Flags().IntVar(&redisPort, "port", 6379, "redis port")
 	rootCmd.AddCommand(checkCmd)
 }

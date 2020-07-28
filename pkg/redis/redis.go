@@ -191,6 +191,9 @@ func (r *RedisPod) ClusterNodes() (nodes []*RedisNode, err error) {
 		return nil, err
 	}
 	nodes, err = r.clusterNodes()
+	if err != nil {
+		return nil, err
+	}
 	for _, node := range nodes {
 		p, ok := m[node.IP]
 		if !ok {
@@ -202,7 +205,7 @@ func (r *RedisPod) ClusterNodes() (nodes []*RedisNode, err error) {
 }
 
 func (r *RedisPod) ClusterCheck() error {
-	result, err := r.redisCliCluster(fmt.Sprintf("check localhost:%d", r.port), false)
+	result, err := r.redisCliCluster(fmt.Sprintf("check %s:%d", r.GetIP(), r.port), false)
 	if err != nil {
 		return err
 	}
