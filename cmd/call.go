@@ -23,36 +23,27 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/monsterxx03/kuberc/pkg/redis"
+
 	"github.com/spf13/cobra"
 )
 
-// configGetCmd represents the configGet command
-var configGetCmd = &cobra.Command{
-	Use:   "config-get <pod> <config key>",
-	Short: "Get config on redis node",
-	Args:  cobra.ExactArgs(2),
+// callCmd represents the call command
+var callCmd = &cobra.Command{
+	Use:   "call <pod> <cmd> <val>...",
+	Short: "Run command on redis node",
+	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		pod, err := redis.NewRedisPod(args[0], namespace, redisPort, clientset, restcfg)
-		if err != nil {
-			return err
-		}
 		all, err := cmd.Flags().GetBool("all")
 		if err != nil {
 			return err
 		}
-		pods := make([]*redis.RedisPod, 0)
-		if all {
-			pods, err = getClusterPods(pod)
-			if err != nil {
-				return err
-			}
-		} else {
-			pods = append(pods, pod)
+		pods, err := getClusterPods(args[0], all)
+		if err != nil {
+			return err
 		}
 		for _, p := range pods {
 			fmt.Println(">>> " + p.GetName() + ":")
-			if res, err := p.ConfigGet(args[1]); err != nil {
+			if res, err := p.Call(args[1:]...); err != nil {
 				return err
 			} else {
 				fmt.Println(res)
@@ -63,6 +54,6 @@ var configGetCmd = &cobra.Command{
 }
 
 func init() {
-	configGetCmd.Flags().Bool("all", false, "get config from every redis node")
-	rootCmd.AddCommand(configGetCmd)
+	callCmd.Flags().Bool("all", false, "run on all redis nodes")
+	rootCmd.AddCommand(callCmd)
 }

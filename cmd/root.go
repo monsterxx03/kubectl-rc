@@ -41,7 +41,7 @@ var clientset *kubernetes.Clientset
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "kuberc",
+	Use:   "rc",
 	Short: "Manage redis cluster on k8s",
 	Long: `Used as a kubectl plugin, to get redis cluster info, 
 replace redis nodes on k8s.
@@ -80,14 +80,22 @@ func init() {
 }
 
 
-func getClusterPods(pod *redis.RedisPod) ([]*redis.RedisPod, error) {
-	pods := make([]*redis.RedisPod, 0)
-	if nodes, err := pod.ClusterNodes(); err != nil {
+func getClusterPods(podname string, all bool) ([]*redis.RedisPod, error) {
+	pod, err := redis.NewRedisPod(podname, namespace, redisPort, clientset, restcfg)
+	if err != nil {
 		return nil, err
-	} else {
-		for _, n := range nodes {
-			pods = append(pods, redis.NewRedisPodWithPod(n.Pod, redisPort, clientset, restcfg))
+	}
+	pods := make([]*redis.RedisPod, 0)
+	if all {
+		if nodes, err := pod.ClusterNodes(); err != nil {
+			return nil, err
+		} else {
+			for _, n := range nodes {
+				pods = append(pods, redis.NewRedisPodWithPod(n.Pod, redisPort, clientset, restcfg))
+			}
 		}
+	} else {
+		pods = append(pods, pod)
 	}
 	sort.Slice(pods, func(i, j int) bool {
 		return pods[i].GetName() < pods[j].GetName()

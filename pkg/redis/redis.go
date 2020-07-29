@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -17,48 +16,6 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 )
 
-type RedisNode struct {
-	ID        string
-	Pod       *corev1.Pod
-	IP        string
-	Flags     []string
-	Epoch     int
-	LinkState string
-	Slots     []string
-}
-
-func (n *RedisNode) IsMaster() bool {
-	for _, f := range n.Flags {
-		if f == "master" {
-			return true
-		}
-	}
-	return false
-}
-
-func (n *RedisNode) String() string {
-	return fmt.Sprintf("id: %s, ip: %s, host: %s, pod: %s/%s, master: %t", n.ID, n.IP, n.Pod.Spec.NodeName, n.Pod.Namespace, n.Pod.Name, n.IsMaster())
-}
-
-// https://redis.io/commands/cluster-nodes
-func NewRedisNode(info string) *RedisNode {
-	parts := strings.Split(info, " ")
-	ip := strings.Split(parts[1], ":")[0]
-	flags := strings.Split(parts[2], ",")
-	epoch, _ := strconv.Atoi(parts[6])
-	slots := make([]string, 0, 1)
-	for _, slot := range parts[8:] {
-		slots = append(slots, slot)
-	}
-	return &RedisNode{
-		ID:        parts[0],
-		IP:        ip,
-		Flags:     flags,
-		Epoch:     epoch,
-		LinkState: parts[7],
-		Slots: slots,
-	}
-}
 
 type RedisPod struct {
 	pod       *corev1.Pod
@@ -89,25 +46,33 @@ func (r *RedisPod) GetIP() string {
 }
 
 func (r *RedisPod) ConfigGet(key string) (string, error) {
-	return r.redisCli("config get " + key, false)
+	return r.redisCliLocal("config get " + key, false)
+}
+
+func (r *RedisPod) Call(cmd... string) (string, error) {
+	return r.redisCliLocal(strings.Join(cmd, " "), false)
 }
 
 func (r *RedisPod) ConfigSet(key , value string) (string, error) {
-	return r.redisCli(fmt.Sprintf("config set %s %s", key, value), false)
+	return r.redisCliLocal(fmt.Sprintf("config set %s %s", key, value), false)
+}
+
+func (r *RedisPod) Ping() (string, error) {
+	return r.redisCliLocal("ping", false)
 }
 
 func (r *RedisPod) GetNodeID() (nodeID string, err error) {
 	if r.nodeID != "" {
 		return r.nodeID, nil
 	}
-	nodeID, err = r.redisCli("cluster myid", true)
+	nodeID, err = r.redisCliLocal("cluster myid", true)
 	nodeID = strings.TrimSpace(nodeID)
 	r.nodeID = nodeID
 	return
 }
 
 func (r *RedisPod) isMaster() (bool, error) {
-	result, err := r.redisCli("role", true)
+	result, err := r.redisCliLocal("role", true)
 	if err != nil {
 		return  false, err
 	}
@@ -118,7 +83,7 @@ func (r *RedisPod) isMaster() (bool, error) {
 }
 
 func (r *RedisPod) ClusterInfo() (string, error) {
-	return r.redisCli("cluster info", false)
+	return r.redisCliLocal("cluster info", false)
 }
 
 func (r *RedisPod) ClusterFailover(force, takeover bool) (string, error) {
@@ -139,7 +104,7 @@ func (r *RedisPod) ClusterFailover(force, takeover bool) (string, error) {
 	if takeover {
 		cmd += " takeover"
 	}
-	return r.redisCli(cmd, false)
+	return r.redisCliLocal(cmd, false)
 }
 
 func (r *RedisPod) ClusterRebalance(weights map[string]string, useEmptyMasters bool, timeout int, simulate bool, batch int, threshold int, replace bool) (string, error) {
@@ -188,7 +153,7 @@ func (r *RedisPod) ClusterRebalance(weights map[string]string, useEmptyMasters b
 }
 
 func (r *RedisPod) clusterNodes() (nodes []*RedisNode, err error) {
-	result, err := r.redisCli("cluster nodes", false)
+	result, err := r.redisCliLocal("cluster nodes", false)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +195,7 @@ func (r *RedisPod) ClusterCheck() error {
 }
 
 func (r *RedisPod) ClusterSlots() (result string, err error) {
-	result, err = r.redisCli("cluster slots", false)
+	result, err = r.redisCliLocal("cluster slots", false)
 	return
 }
 
@@ -266,12 +231,16 @@ func (r *RedisPod) redisCliCluster(cmd string, toStdout bool) (string, error) {
 	return r.execute(fmt.Sprintf("redis-cli --cluster %s", cmd), toStdout)
 }
 
-func (r *RedisPod) redisCli(cmd string, raw bool) (string, error) {
+func (r *RedisPod) redisCliLocal(cmd string, raw bool) (string, error) {
+	return r.redisCli(cmd, raw, "127.0.0.1", r.port)
+}
+
+func (r *RedisPod) redisCli(cmd string, raw bool, host string, port int) (string, error) {
 	var c string
 	if raw {
-		c = fmt.Sprintf("redis-cli --raw -p %d %s ", r.port, cmd)
+		c = fmt.Sprintf("redis-cli --raw -h %s -p %d %s ", host, port, cmd)
 	} else {
-		c = fmt.Sprintf("redis-cli -p %d %s", r.port, cmd)
+		c = fmt.Sprintf("redis-cli -h %s -p %d %s", host, port, cmd)
 	}
 	return r.execute(c, false)
 }
