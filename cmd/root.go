@@ -22,8 +22,10 @@ THE SOFTWARE.
 package cmd
 
 import (
+	"sort"
 	"errors"
 	"fmt"
+	"github.com/monsterxx03/kuberc/pkg/redis"
 	"github.com/spf13/cobra"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/kubernetes"
@@ -77,3 +79,18 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "kubeconfig used for kubectl, will try to load from $KUBECONFIG first")
 }
 
+
+func getClusterPods(pod *redis.RedisPod) ([]*redis.RedisPod, error) {
+	pods := make([]*redis.RedisPod, 0)
+	if nodes, err := pod.ClusterNodes(); err != nil {
+		return nil, err
+	} else {
+		for _, n := range nodes {
+			pods = append(pods, redis.NewRedisPodWithPod(n.Pod, redisPort, clientset, restcfg))
+		}
+	}
+	sort.Slice(pods, func(i, j int) bool {
+		return pods[i].GetName() < pods[j].GetName()
+	})
+	return pods, nil
+}

@@ -76,8 +76,24 @@ func NewRedisPod(podname string, namespace string, port int, clientset *kubernet
 	return &RedisPod{pod: pod, port: port, clientset: clientset, restcfg: restcfg}, nil
 }
 
+func NewRedisPodWithPod(pod *corev1.Pod, port int, clientset *kubernetes.Clientset, restcfg *restclient.Config) *RedisPod {
+	return &RedisPod{pod: pod, port: port, clientset: clientset, restcfg: restcfg}
+}
+
+func (r *RedisPod) GetName() string {
+	return r.pod.Name
+}
+
 func (r *RedisPod) GetIP() string {
 	return r.pod.Status.PodIP
+}
+
+func (r *RedisPod) ConfigGet(key string) (string, error) {
+	return r.redisCli("config get " + key, false)
+}
+
+func (r *RedisPod) ConfigSet(key , value string) (string, error) {
+	return r.redisCli(fmt.Sprintf("config set %s %s", key, value), false)
 }
 
 func (r *RedisPod) GetNodeID() (nodeID string, err error) {

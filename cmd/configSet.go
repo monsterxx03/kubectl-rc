@@ -27,31 +27,42 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	failoverForce bool
-	failoverTakeforce bool
-)
-// failoverCmd represents the failover command
-var failoverCmd = &cobra.Command{
-	Use:   "failover <slave-pod>",
-	Short: "Promote a slave to master",
-	Args: cobra.ExactArgs(1),
+// configSetCmd represents the configSet command
+var configSetCmd = &cobra.Command{
+	Use:   "config-set <pod> <key> <val>",
+	Short: "Set config on redis node",
+	Args: cobra.ExactArgs(3),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pod, err := redis.NewRedisPod(args[0], namespace, redisPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}
-		if res, err := pod.ClusterFailover(failoverForce, failoverTakeforce); err != nil {
+		all, err := cmd.Flags().GetBool("all")
+		if err != nil {
 			return err
+		}
+		pods := make([]*redis.RedisPod, 0)
+		if all {
+			pods, err = getClusterPods(pod)
+			if err != nil {
+				return err
+			}
 		} else {
-			fmt.Println(res)
+			pods = append(pods, pod)
+		}
+		for _, p := range pods {
+			fmt.Println(">>> " + p.GetName() + ":")
+			if res, err := p.ConfigSet(args[1], args[2]); err != nil {
+				return err
+			} else {
+				fmt.Println(res)
+			}
 		}
 		return nil
 	},
 }
 
 func init() {
-	failoverCmd.Flags().BoolVar(&failoverForce,"force", false, "do manual failover without handshake with master")
-	failoverCmd.Flags().BoolVar(&failoverTakeforce,"takeover", false, "do manual failover without cluster consensus")
-	rootCmd.AddCommand(failoverCmd)
+	configSetCmd.Flags().Bool("all", false, "get config from every redis node")
+	rootCmd.AddCommand(configSetCmd)
 }
