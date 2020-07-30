@@ -102,3 +102,4 @@ func getClusterPods(podname string, all bool) ([]*redis.RedisPod, error) {
 	})
 	return pods, nil
 }
+

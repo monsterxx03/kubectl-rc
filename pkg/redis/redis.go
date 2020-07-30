@@ -85,6 +85,15 @@ func (r *RedisPod) ClusterInfo() (string, error) {
 	return r.redisCliLocal("cluster info", false)
 }
 
+func (r *RedisPod) ClusterCreate(replicas int, pods... *RedisPod) (string, error) {
+	l := make([]string, 1, len(pods) + 1)
+	l[0] = fmt.Sprintf("%s:%d", r.GetIP(), r.port)
+	for _, p := range pods {
+		l = append(l, fmt.Sprintf("%s:%d", p.GetIP(), p.port))
+	}
+	return r.redisCliCluster(fmt.Sprintf("create %s --cluster-replicas %d", strings.Join(l, " "), replicas), false)
+}
+
 func (r *RedisPod) ClusterFailover(force, takeover bool) (string, error) {
 	if force && takeover {
 		return "", errors.New("force and takeover can't be passed at sametime during failover")
