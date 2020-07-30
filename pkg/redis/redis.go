@@ -16,7 +16,6 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 )
 
-
 type RedisPod struct {
 	pod       *corev1.Pod
 	port      int
@@ -46,14 +45,14 @@ func (r *RedisPod) GetIP() string {
 }
 
 func (r *RedisPod) ConfigGet(key string) (string, error) {
-	return r.redisCliLocal("config get " + key, false)
+	return r.redisCliLocal("config get "+key, false)
 }
 
-func (r *RedisPod) Call(cmd... string) (string, error) {
+func (r *RedisPod) Call(cmd ...string) (string, error) {
 	return r.redisCliLocal(strings.Join(cmd, " "), false)
 }
 
-func (r *RedisPod) ConfigSet(key , value string) (string, error) {
+func (r *RedisPod) ConfigSet(key, value string) (string, error) {
 	return r.redisCliLocal(fmt.Sprintf("config set %s %s", key, value), false)
 }
 
@@ -74,7 +73,7 @@ func (r *RedisPod) GetNodeID() (nodeID string, err error) {
 func (r *RedisPod) isMaster() (bool, error) {
 	result, err := r.redisCliLocal("role", true)
 	if err != nil {
-		return  false, err
+		return false, err
 	}
 	if strings.Split(result, "\r\n")[0] == "master" {
 		return true, nil
@@ -131,14 +130,14 @@ func (r *RedisPod) ClusterRebalance(weights map[string]string, useEmptyMasters b
 	if useEmptyMasters {
 		cmd += " --cluster-use-empty-masters"
 	}
-	if timeout <=2000 {
+	if timeout <= 2000 {
 		return "", errors.New("timeout must > 2000 ms for safety.")
 	}
 	cmd += fmt.Sprintf(" --cluster-timeout %d", timeout)
 	if simulate {
 		cmd += " --cluster-simulate"
 	}
-	if batch <=0 {
+	if batch <= 0 {
 		return "", errors.New("pipeline size must > 0")
 	}
 	cmd += fmt.Sprintf(" --cluster-pipeline %d", batch)
@@ -238,9 +237,9 @@ func (r *RedisPod) redisCliLocal(cmd string, raw bool) (string, error) {
 func (r *RedisPod) redisCli(cmd string, raw bool, host string, port int) (string, error) {
 	var c string
 	if raw {
-		c = fmt.Sprintf("redis-cli --raw -h %s -p %d %s ", host, port, cmd)
+		c = fmt.Sprintf("redis-cli -c --raw -h %s -p %d %s ", host, port, cmd)
 	} else {
-		c = fmt.Sprintf("redis-cli -h %s -p %d %s", host, port, cmd)
+		c = fmt.Sprintf("redis-cli -c -h %s -p %d %s", host, port, cmd)
 	}
 	return r.execute(c, false)
 }
@@ -263,13 +262,13 @@ func (r *RedisPod) execute(cmd string, toStdout bool) (string, error) {
 	var opt remotecommand.StreamOptions
 	if toStdout {
 		opt = remotecommand.StreamOptions{
-			Stdout:            os.Stdout,
-			Stderr:            os.Stderr,
+			Stdout: os.Stdout,
+			Stderr: os.Stderr,
 		}
 	} else {
 		opt = remotecommand.StreamOptions{
-			Stdout:            buf,
-			Stderr:            os.Stderr,
+			Stdout: buf,
+			Stderr: os.Stderr,
 		}
 	}
 	err = exec.Stream(opt)
@@ -288,4 +287,3 @@ func getPodIPMapInNamespace(clientset *kubernetes.Clientset, namespace string) (
 	}
 	return m, err
 }
-
