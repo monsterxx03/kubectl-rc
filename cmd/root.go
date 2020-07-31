@@ -35,6 +35,7 @@ import (
 
 var cfgFile string
 var namespace string
+var containerName string
 var redisPort int
 var restcfg *restclient.Config
 var clientset *kubernetes.Clientset
@@ -76,12 +77,13 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().IntVarP(&redisPort, "port", "p", 6379, "redis port")
 	rootCmd.PersistentFlags().StringVarP(&namespace, "namespace", "n", "default", "namespace")
+	rootCmd.PersistentFlags().StringVarP(&containerName, "container", "c", "", "container name")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "kubeconfig used for kubectl, will try to load from $KUBECONFIG first")
 }
 
 
 func getClusterPods(podname string, all bool) ([]*redis.RedisPod, error) {
-	pod, err := redis.NewRedisPod(podname, namespace, redisPort, clientset, restcfg)
+	pod, err := redis.NewRedisPod(podname, containerName, namespace, redisPort, clientset, restcfg)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +93,7 @@ func getClusterPods(podname string, all bool) ([]*redis.RedisPod, error) {
 			return nil, err
 		} else {
 			for _, n := range nodes {
-				pods = append(pods, redis.NewRedisPodWithPod(n.Pod, redisPort, clientset, restcfg))
+				pods = append(pods, redis.NewRedisPodWithPod(n.Pod, containerName, redisPort, clientset, restcfg))
 			}
 		}
 	} else {

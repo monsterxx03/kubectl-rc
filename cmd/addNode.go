@@ -33,11 +33,11 @@ var addNodeCmd = &cobra.Command{
 	Short: "Make a pod join redis-cluster",
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		newPod, err := redis.NewRedisPod(args[0], namespace, redisPort, clientset, restcfg)
+		newPod, err := redis.NewRedisPod(args[0], containerName, namespace, redisPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}
-		existingPod, err := redis.NewRedisPod(args[1], namespace, redisPort, clientset, restcfg)
+		existingPod, err := redis.NewRedisPod(args[1], containerName, namespace, redisPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}

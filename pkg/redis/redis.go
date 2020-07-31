@@ -19,22 +19,34 @@ import (
 
 type RedisPod struct {
 	pod       *corev1.Pod
+	redisContainerName string
 	port      int
 	nodeID    string
 	clientset *kubernetes.Clientset
 	restcfg   *restclient.Config
 }
 
-func NewRedisPod(podname string, namespace string, port int, clientset *kubernetes.Clientset, restcfg *restclient.Config) (*RedisPod, error) {
+func NewRedisPod(podname string, redisContainerName string, namespace string, port int, clientset *kubernetes.Clientset, restcfg *restclient.Config) (*RedisPod, error) {
 	pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podname, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
-	return &RedisPod{pod: pod, port: port, clientset: clientset, restcfg: restcfg}, nil
+	if redisContainerName != "" {
+		hasContainer := false
+		for _, c := range pod.Spec.Containers {
+			if c.Name == redisContainerName {
+				hasContainer = true
+			}
+		}
+		if !hasContainer {
+			return nil, fmt.Errorf("can't find container %s in pod %s", redisContainerName, podname)
+		}
+	}
+	return &RedisPod{pod: pod, redisContainerName: redisContainerName, port: port, clientset: clientset, restcfg: restcfg}, nil
 }
 
-func NewRedisPodWithPod(pod *corev1.Pod, port int, clientset *kubernetes.Clientset, restcfg *restclient.Config) *RedisPod {
-	return &RedisPod{pod: pod, port: port, clientset: clientset, restcfg: restcfg}
+func NewRedisPodWithPod(pod *corev1.Pod, redisContainerName string, port int, clientset *kubernetes.Clientset, restcfg *restclient.Config) *RedisPod {
+	return &RedisPod{pod: pod, redisContainerName: redisContainerName, port: port, clientset: clientset, restcfg: restcfg}
 }
 
 func (r *RedisPod) GetName() string {
@@ -261,7 +273,12 @@ func (r *RedisPod) redisCli(cmd string, raw bool, host string, port int) (string
 func (r *RedisPod) execute(cmd string, toStdout bool, toStdin bool) (string, error) {
 	req := r.clientset.CoreV1().RESTClient().Post().Resource("pods").Name(r.pod.Name).Namespace(r.pod.Namespace).SubResource("exec")
 	fmt.Println(cmd)
+	containerName := r.pod.Spec.Containers[0].Name
+	if r.redisContainerName != "" {
+		containerName = r.redisContainerName
+	}
 	req.VersionedParams(&corev1.PodExecOptions{
+		Container: containerName,
 		Command: []string{"sh", "-c", cmd},
 		Stdin:   toStdin,
 		Stderr:  true,

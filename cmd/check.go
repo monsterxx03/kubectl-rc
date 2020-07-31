@@ -31,7 +31,7 @@ var checkCmd = &cobra.Command{
 	Use:   "check",
 	Short: "Check nodes for slots configuration",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		p, err := redis.NewRedisPod(args[0], namespace, redisPort, clientset, restcfg)
+		p, err := redis.NewRedisPod(args[0], containerName, namespace, redisPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}

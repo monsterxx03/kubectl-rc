@@ -40,7 +40,7 @@ var createCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pods := make([]*redis.RedisPod, 0, len(args))
 		for _, name := range args {
-			p, err := redis.NewRedisPod(name, namespace, redisPort, clientset, restcfg)
+			p, err := redis.NewRedisPod(name, containerName, namespace, redisPort, clientset, restcfg)
 			if err != nil {
 				return err
 			}

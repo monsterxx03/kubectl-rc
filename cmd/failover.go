@@ -37,7 +37,7 @@ var failoverCmd = &cobra.Command{
 	Short: "Promote a slave to master",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		pod, err := redis.NewRedisPod(args[0], namespace, redisPort, clientset, restcfg)
+		pod, err := redis.NewRedisPod(args[0], containerName, namespace, redisPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}

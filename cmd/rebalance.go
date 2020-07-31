@@ -60,7 +60,7 @@ var rebalanceCmd = &cobra.Command{
 			}
 		}
 
-		pod, err := redis.NewRedisPod(args[0], namespace, redisPort, clientset, restcfg)
+		pod, err := redis.NewRedisPod(args[0], containerName, namespace, redisPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}

@@ -33,7 +33,7 @@ var slotsCmd = &cobra.Command{
 	Short: "Get cluster slots info",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		p, err := redis.NewRedisPod(args[0], namespace, redisPort, clientset, restcfg)
+		p, err := redis.NewRedisPod(args[0], containerName, namespace, redisPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}
