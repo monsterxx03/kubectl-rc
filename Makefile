@@ -1,2 +1,2 @@
 build:
-	go build -o bin/kubrc
+	go build -o bin/kubctl-rc

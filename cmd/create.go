@@ -27,12 +27,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var createReplicas int
+var (
+	createReplicas int
+	createYes      bool
+)
+
 // createCmd represents the create command
 var createCmd = &cobra.Command{
 	Use:   "create <pod1> <pod2> ...",
 	Short: "Create redis cluster",
-	Args: cobra.MinimumNArgs(2),
+	Args:  cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pods := make([]*redis.RedisPod, 0, len(args))
 		for _, name := range args {
@@ -42,7 +46,7 @@ var createCmd = &cobra.Command{
 			}
 			pods = append(pods, p)
 		}
-		if res, err := pods[0].ClusterCreate(createReplicas, pods[1:]...); err != nil {
+		if res, err := pods[0].ClusterCreate(createReplicas, createYes, pods[1:]...); err != nil {
 			return err
 		} else {
 			fmt.Println(res)
@@ -52,6 +56,7 @@ var createCmd = &cobra.Command{
 }
 
 func init() {
-	createCmd.Flags().IntVar(&createReplicas,"replicas", 0, "replicas in cluster")
+	createCmd.Flags().IntVar(&createReplicas, "replicas", 0, "replicas in cluster")
+	createCmd.Flags().BoolVar(&createYes, "yes", false, "don't ask")
 	rootCmd.AddCommand(createCmd)
 }

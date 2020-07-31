@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"io"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -85,13 +86,17 @@ func (r *RedisPod) ClusterInfo() (string, error) {
 	return r.redisCliLocal("cluster info", false)
 }
 
-func (r *RedisPod) ClusterCreate(replicas int, pods... *RedisPod) (string, error) {
-	l := make([]string, 1, len(pods) + 1)
+func (r *RedisPod) ClusterCreate(replicas int, yes bool, pods ...*RedisPod) (string, error) {
+	l := make([]string, 1, len(pods)+1)
 	l[0] = fmt.Sprintf("%s:%d", r.GetIP(), r.port)
 	for _, p := range pods {
 		l = append(l, fmt.Sprintf("%s:%d", p.GetIP(), p.port))
 	}
-	return r.redisCliCluster(fmt.Sprintf("create %s --cluster-replicas %d", strings.Join(l, " "), replicas), false)
+	cmd := fmt.Sprintf("create %s --cluster-replicas %d", strings.Join(l, " "), replicas)
+	if yes {
+		cmd += " --cluster-yes"
+	}
+	return r.redisCliCluster(cmd, true, !yes)
 }
 
 func (r *RedisPod) ClusterFailover(force, takeover bool) (string, error) {
@@ -157,7 +162,7 @@ func (r *RedisPod) ClusterRebalance(weights map[string]string, useEmptyMasters b
 	if replace {
 		cmd += " --cluster-replace"
 	}
-	return r.redisCliCluster(cmd, true)
+	return r.redisCliCluster(cmd, true, false)
 }
 
 func (r *RedisPod) clusterNodes() (nodes []*RedisNode, err error) {
@@ -194,7 +199,7 @@ func (r *RedisPod) ClusterNodes() (nodes []*RedisNode, err error) {
 }
 
 func (r *RedisPod) ClusterCheck() error {
-	result, err := r.redisCliCluster(fmt.Sprintf("check %s:%d", r.GetIP(), r.port), false)
+	result, err := r.redisCliCluster(fmt.Sprintf("check %s:%d", r.GetIP(), r.port), false, false)
 	if err != nil {
 		return err
 	}
@@ -223,7 +228,7 @@ func (r *RedisPod) ClusterAddNode(newPod *RedisPod, slave bool) (result string, 
 		}
 		cmd = fmt.Sprintf("%s --cluster-slave --cluster-master-id %s", cmd, nodeID)
 	}
-	result, err = r.redisCliCluster(cmd, false)
+	result, err = r.redisCliCluster(cmd, false, false)
 	return
 }
 
@@ -232,11 +237,11 @@ func (r *RedisPod) ClusterDelNode() (result string, err error) {
 	if err != nil {
 		return "", err
 	}
-	return r.redisCliCluster(fmt.Sprintf("del-node %s:%d %s", r.GetIP(), r.port, nodeID), false)
+	return r.redisCliCluster(fmt.Sprintf("del-node %s:%d %s", r.GetIP(), r.port, nodeID), false, false)
 }
 
-func (r *RedisPod) redisCliCluster(cmd string, toStdout bool) (string, error) {
-	return r.execute(fmt.Sprintf("redis-cli --cluster %s", cmd), toStdout)
+func (r *RedisPod) redisCliCluster(cmd string, toStdout, toStdin bool) (string, error) {
+	return r.execute(fmt.Sprintf("redis-cli --cluster %s", cmd), toStdout, toStdin)
 }
 
 func (r *RedisPod) redisCliLocal(cmd string, raw bool) (string, error) {
@@ -250,15 +255,15 @@ func (r *RedisPod) redisCli(cmd string, raw bool, host string, port int) (string
 	} else {
 		c = fmt.Sprintf("redis-cli -c -h %s -p %d %s", host, port, cmd)
 	}
-	return r.execute(c, false)
+	return r.execute(c, false, false)
 }
 
-func (r *RedisPod) execute(cmd string, toStdout bool) (string, error) {
+func (r *RedisPod) execute(cmd string, toStdout bool, toStdin bool) (string, error) {
 	req := r.clientset.CoreV1().RESTClient().Post().Resource("pods").Name(r.pod.Name).Namespace(r.pod.Namespace).SubResource("exec")
 	fmt.Println(cmd)
 	req.VersionedParams(&corev1.PodExecOptions{
 		Command: []string{"sh", "-c", cmd},
-		Stdin:   false,
+		Stdin:   toStdin,
 		Stderr:  true,
 		Stdout:  true,
 		TTY:     true,
@@ -267,18 +272,21 @@ func (r *RedisPod) execute(cmd string, toStdout bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	var stdout io.Writer
+	var stdin io.Reader
 	buf := new(bytes.Buffer)
-	var opt remotecommand.StreamOptions
 	if toStdout {
-		opt = remotecommand.StreamOptions{
-			Stdout: os.Stdout,
-			Stderr: os.Stderr,
-		}
+		stdout = os.Stdout
 	} else {
-		opt = remotecommand.StreamOptions{
-			Stdout: buf,
-			Stderr: os.Stderr,
-		}
+		stdout = buf
+	}
+	if toStdin {
+		stdin = os.Stdin
+	}
+	opt := remotecommand.StreamOptions{
+		Stdin:             stdin,
+		Stdout:            stdout,
+		Stderr:            os.Stderr,
 	}
 	err = exec.Stream(opt)
 	if err != nil {
