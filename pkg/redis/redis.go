@@ -5,8 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"io"
+	"os"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -18,12 +18,12 @@ import (
 )
 
 type RedisPod struct {
-	pod       *corev1.Pod
+	pod                *corev1.Pod
 	redisContainerName string
-	port      int
-	nodeID    string
-	clientset *kubernetes.Clientset
-	restcfg   *restclient.Config
+	port               int
+	nodeID             string
+	clientset          *kubernetes.Clientset
+	restcfg            *restclient.Config
 }
 
 func NewRedisPod(podname string, redisContainerName string, namespace string, port int, clientset *kubernetes.Clientset, restcfg *restclient.Config) (*RedisPod, error) {
@@ -192,7 +192,7 @@ func (r *RedisPod) clusterNodes() (nodes []*RedisNode, err error) {
 
 // ClusterNodes return redis nodes with pod info
 func (r *RedisPod) ClusterNodes() (nodes []*RedisNode, err error) {
-	m, err := getPodIPMapInNamespace(r.clientset, r.pod.Namespace)
+	m, err := r.getPodsInStatefulSet()
 	if err != nil {
 		return nil, err
 	}
@@ -279,11 +279,11 @@ func (r *RedisPod) execute(cmd string, toStdout bool, toStdin bool) (string, err
 	}
 	req.VersionedParams(&corev1.PodExecOptions{
 		Container: containerName,
-		Command: []string{"sh", "-c", cmd},
-		Stdin:   toStdin,
-		Stderr:  true,
-		Stdout:  true,
-		TTY:     true,
+		Command:   []string{"sh", "-c", cmd},
+		Stdin:     toStdin,
+		Stderr:    true,
+		Stdout:    true,
+		TTY:       true,
 	}, scheme.ParameterCodec)
 	exec, err := remotecommand.NewSPDYExecutor(r.restcfg, "POST", req.URL())
 	if err != nil {
@@ -301,9 +301,9 @@ func (r *RedisPod) execute(cmd string, toStdout bool, toStdin bool) (string, err
 		stdin = os.Stdin
 	}
 	opt := remotecommand.StreamOptions{
-		Stdin:             stdin,
-		Stdout:            stdout,
-		Stderr:            os.Stderr,
+		Stdin:  stdin,
+		Stdout: stdout,
+		Stderr: os.Stderr,
 	}
 	err = exec.Stream(opt)
 	if err != nil {
@@ -311,6 +311,38 @@ func (r *RedisPod) execute(cmd string, toStdout bool, toStdin bool) (string, err
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+func (p *RedisPod) getPodsInStatefulSet() (map[string]corev1.Pod, error) {
+	stsName := ""
+	for _, r := range p.pod.OwnerReferences {
+		if *r.Controller && r.Kind == "StatefulSet" {
+			stsName = r.Name
+			break
+		}
+	}
+	if stsName == "" {
+		return nil, fmt.Errorf("pod %s is not managed by statefulset", p.pod.Name)
+	}
+	sts, err := p.clientset.AppsV1().StatefulSets(p.pod.Namespace).Get(context.Background(), stsName, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	selector := make([]string, 0, len(sts.Spec.Selector.MatchLabels))
+	for k, v := range sts.Spec.Selector.MatchLabels {
+		selector = append(selector, fmt.Sprintf("%s=%s", k, v))
+	}
+	pods, err := p.clientset.CoreV1().Pods(p.pod.Namespace).List(context.Background(),
+		metav1.ListOptions{LabelSelector: strings.Join(selector, ",")})
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[string]corev1.Pod)
+	for _, pod := range pods.Items {
+		m[pod.Status.PodIP] = pod
+	}
+	return m, nil
+
 }
 
 func getPodIPMapInNamespace(clientset *kubernetes.Clientset, namespace string) (map[string]corev1.Pod, error) {
