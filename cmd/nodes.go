@@ -25,6 +25,8 @@ import (
 	"fmt"
 	"github.com/monsterxx03/kuberc/pkg/redis"
 	"github.com/spf13/cobra"
+	"os"
+	"text/tabwriter"
 )
 
 // nodesCmd represents the nodes command
@@ -40,9 +42,12 @@ var nodesCmd = &cobra.Command{
 		if nodes, err := p.ClusterNodes(); err != nil {
 			return err
 		} else {
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight)
+			fmt.Fprintln(w, "Pod\tIP\tNodeID\tHost\tIsMaster\tSlots\t")
 			for _, n := range nodes {
-				fmt.Println(n)
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%t\t%d\t\n", n.Pod.Name, n.IP, n.ID, n.Pod.Spec.NodeName, n.IsMaster(), n.SlotsCount())
 			}
+			w.Flush()
 		}
 		return nil
 	},

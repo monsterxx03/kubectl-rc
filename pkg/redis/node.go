@@ -45,7 +45,7 @@ func (n *RedisNode) SlotsCount() int {
 }
 
 func (n *RedisNode) String() string {
-	return fmt.Sprintf("pod: %s/%s, id: %s, ip: %s, host: %s, master: %t, slots: %d", n.Pod.Name, n.ID, n.IP, n.Pod.Spec.NodeName, n.Pod.Namespace, n.IsMaster(), n.SlotsCount())
+	return fmt.Sprintf("pod: %s, id: %s, ip: %s, host: %s, master: %t, slots: %d", n.Pod.Name, n.ID, n.IP, n.Pod.Spec.NodeName, n.IsMaster(), n.SlotsCount())
 }
 
 // https://redis.io/commands/cluster-nodes

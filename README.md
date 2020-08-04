@@ -40,10 +40,19 @@ Get all redis nodes:
 
     >> ks rc nodes rc-0
 
-    id: f1b074635d8dc1e33df8521c93a97537748099cb, ip: 10.0.45.194, host: ip-10-0-40-50.ec2.internal, pod: default/rc-0, master: true
-    id: 6e008f2fdcc451fc042237691b1af5d542550252, ip: 10.0.47.232, host: ip-10-0-40-52.ec2.internal, pod: default/rc-1, master: true
-    id: 0aac3566a4fee619a10bd681951c4ae26c47238d, ip: 10.0.44.165, host: ip-10-0-40-54.ec2.internal, pod: default/rc-2, master: true
+             Pod          IP                                   NodeID                       Host IsMaster Slots
+            rc-0 10.0.45.194 84f62928424e945dcf56fc12f59ceead7e0101cd ip-10-0-40-50.ec2.internal     true  5461
+            rc-2  10.0.43.45 96e929fbd646c8386c9587b46e3d9a58a3fcf74e ip-10-0-40-51.ec2.internal     true  5461
+            rc-1  10.0.44.38 10dafd8b7c5c40f22351cdb013b16295ae722b0f ip-10-0-40-53.ec2.internal     true  5462 
     
+    
+Show slots info:
+
+    >> ks rc slots  rc-0
+           slots       master slaves
+          0-5460         rc-0       
+     10923-16383         rc-2       
+      5461-10922         rc-1    
 
 Run command on all redis nodes:
 

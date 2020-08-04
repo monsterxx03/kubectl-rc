@@ -25,6 +25,9 @@ import (
 	"fmt"
 	"github.com/monsterxx03/kuberc/pkg/redis"
 	"github.com/spf13/cobra"
+	"os"
+	"strings"
+	"text/tabwriter"
 )
 
 // slotsCmd represents the slots command
@@ -40,9 +43,16 @@ var slotsCmd = &cobra.Command{
 		if slots, err := p.ClusterSlots(); err != nil {
 			return err
 		} else {
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight)
+			fmt.Fprintln(w, "slots\tmaster\tslaves\t")
 			for _, s := range slots {
-				fmt.Println(s)
+				slaves := make([]string, 0, len(s.Slaves))
+				for _, slave := range s.Slaves {
+					slaves = append(slaves, slave.GetName())
+				}
+				fmt.Fprintf(w, "%s-%s\t%s\t%s\t\n", s.Start, s.End, s.Master.GetName(), strings.Join(slaves, " "))
 			}
+			w.Flush()
 		}
 		return nil
 	},
