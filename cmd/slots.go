@@ -37,10 +37,12 @@ var slotsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if res, err := p.ClusterSlots(); err != nil {
+		if slots, err := p.ClusterSlots(); err != nil {
 			return err
 		} else {
-			fmt.Println(res)
+			for _, s := range slots {
+				fmt.Println(s)
+			}
 		}
 		return nil
 	},

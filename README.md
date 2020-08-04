@@ -1,6 +1,6 @@
 ##  kubectl plugin for managing redis cluster
 
-Operate on k8s pods, not confusing ip and node ip in redis-cluster.
+Operate on k8s pods, not confusing ip and node id in redis-cluster.
 
 ### Install
 

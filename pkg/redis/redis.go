@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -219,9 +220,67 @@ func (r *RedisPod) ClusterCheck() error {
 	return nil
 }
 
-func (r *RedisPod) ClusterSlots() (result string, err error) {
-	result, err = r.redisCliLocal("cluster slots", false)
-	return
+func (r *RedisPod) ClusterSlots() ([]*Slots, error) {
+	result, err := r.redisCliLocal("cluster slots", true)
+	if err != nil {
+		return nil, err
+	}
+	result = strings.TrimSpace(result)
+	lines := strings.Split(result, "\r\n")
+	if len(lines) < 5 {
+		return nil, fmt.Errorf("wrong slots info %s", result)
+	}
+	m, err := r.getPodsInStatefulSet()
+	if err != nil {
+		return nil, err
+	}
+
+	newPod := func (ip, portStr, nodeID string) (*RedisPod, error) {
+		p, ok := m[ip]
+		if !ok {
+			return nil, fmt.Errorf("cant't find pod for ip %s", ip)
+		}
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			return nil, err
+		}
+		pod := NewRedisPodWithPod(&p, "", port, r.clientset, r.restcfg)
+		pod.nodeID = nodeID
+		return pod, nil
+	}
+
+	slots := make([]*Slots, 0)
+	master, err := newPod(lines[2], lines[3], lines[4])
+	if err != nil {
+		return nil, err
+	}
+	s := &Slots{Start: lines[0], End: lines[1], Master: master, Slaves: make([]*RedisPod, 0)}
+	slots = append(slots, s)
+	lines = lines[5:]
+	for {
+		if len(lines) == 0 {
+			break
+		}
+		if strings.Contains(lines[0], ".") {
+			// it's a slave node
+			last := slots[len(slots)-1]
+			slave, err := newPod(lines[0], lines[1], lines[2])
+			if err != nil {
+				return nil, err
+			}
+			last.Slaves = append(last.Slaves, slave)
+			lines = lines[3:]
+		} else {
+			// a new slot
+			master, err := newPod(lines[2], lines[3], lines[4])
+			if err != nil {
+				return nil, err
+			}
+			slots = append(slots, &Slots{Start: lines[0], End: lines[1], Master: master, Slaves: make([]*RedisPod, 0)})
+			lines = lines[5:]
+		}
+	}
+	return slots, nil
 }
 
 func (r *RedisPod) ClusterAddNode(newPod *RedisPod, slave bool) (result string, err error) {
@@ -345,11 +404,3 @@ func (p *RedisPod) getPodsInStatefulSet() (map[string]corev1.Pod, error) {
 
 }
 
-func getPodIPMapInNamespace(clientset *kubernetes.Clientset, namespace string) (map[string]corev1.Pod, error) {
-	pods, err := clientset.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{})
-	m := make(map[string]corev1.Pod)
-	for _, pod := range pods.Items {
-		m[pod.Status.PodIP] = pod
-	}
-	return m, err
-}
