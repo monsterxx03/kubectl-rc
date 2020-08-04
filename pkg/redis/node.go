@@ -29,8 +29,23 @@ func (n *RedisNode) IsMaster() bool {
 	return false
 }
 
+func (n *RedisNode) SlotsCount() int {
+	count := 0
+	for _, s := range n.Slots{
+		if strings.Contains(s, "-"){
+			parts := strings.Split(s, "-")
+			start, _ := strconv.Atoi(parts[0])
+			end, _ := strconv.Atoi(parts[1])
+			count += (end - start + 1)
+		} else {
+			count += 1
+		}
+	}
+	return count
+}
+
 func (n *RedisNode) String() string {
-	return fmt.Sprintf("id: %s, ip: %s, host: %s, pod: %s/%s, master: %t", n.ID, n.IP, n.Pod.Spec.NodeName, n.Pod.Namespace, n.Pod.Name, n.IsMaster())
+	return fmt.Sprintf("pod: %s/%s, id: %s, ip: %s, host: %s, master: %t, slots: %d", n.Pod.Name, n.ID, n.IP, n.Pod.Spec.NodeName, n.Pod.Namespace, n.IsMaster(), n.SlotsCount())
 }
 
 // https://redis.io/commands/cluster-nodes
@@ -41,7 +56,7 @@ func NewRedisNode(info string) *RedisNode {
 	epoch, _ := strconv.Atoi(parts[6])
 	slots := make([]string, 0, 1)
 	for _, slot := range parts[8:] {
-		slots = append(slots, slot)
+		slots = append(slots, strings.TrimSpace(slot))
 	}
 	return &RedisNode{
 		ID:        parts[0],
