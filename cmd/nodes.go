@@ -26,6 +26,7 @@ import (
 	"github.com/monsterxx03/kuberc/pkg/redis"
 	"github.com/spf13/cobra"
 	"os"
+	"sort"
 	"text/tabwriter"
 )
 
@@ -42,6 +43,9 @@ var nodesCmd = &cobra.Command{
 		if nodes, err := p.ClusterNodes(); err != nil {
 			return err
 		} else {
+			sort.Slice(nodes, func(i, j int) bool {
+				return nodes[i].Pod.GetName() < nodes[j].Pod.GetName()
+			})
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight)
 			fmt.Fprintln(w, "Pod\tIP\tNodeID\tHost\tIsMaster\tSlots\t")
 			for _, n := range nodes {

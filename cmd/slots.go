@@ -26,6 +26,7 @@ import (
 	"github.com/monsterxx03/kuberc/pkg/redis"
 	"github.com/spf13/cobra"
 	"os"
+	"sort"
 	"strings"
 	"text/tabwriter"
 )
@@ -43,6 +44,9 @@ var slotsCmd = &cobra.Command{
 		if slots, err := p.ClusterSlots(); err != nil {
 			return err
 		} else {
+			sort.Slice(slots, func(i, j int) bool {
+				return slots[i].Start < slots[j].End
+			})
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight)
 			fmt.Fprintln(w, "slots\tmaster\tslaves\t")
 			for _, s := range slots {
@@ -50,7 +54,7 @@ var slotsCmd = &cobra.Command{
 				for _, slave := range s.Slaves {
 					slaves = append(slaves, slave.GetName())
 				}
-				fmt.Fprintf(w, "%s-%s\t%s\t%s\t\n", s.Start, s.End, s.Master.GetName(), strings.Join(slaves, " "))
+				fmt.Fprintf(w, "%d-%d\t%s\t%s\t\n", s.Start, s.End, s.Master.GetName(), strings.Join(slaves, " "))
 			}
 			w.Flush()
 		}

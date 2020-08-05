@@ -254,7 +254,15 @@ func (r *RedisPod) ClusterSlots() ([]*Slots, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Slots{Start: lines[0], End: lines[1], Master: master, Slaves: make([]*RedisPod, 0)}
+	start, err := strconv.Atoi(lines[0])
+	if err != nil {
+		return nil, err
+	}
+	end, err := strconv.Atoi(lines[1])
+	if err != nil {
+		return nil, err
+	}
+	s := &Slots{Start: start, End: end, Master: master, Slaves: make([]*RedisPod, 0)}
 	slots = append(slots, s)
 	lines = lines[5:]
 	for {
@@ -276,7 +284,15 @@ func (r *RedisPod) ClusterSlots() ([]*Slots, error) {
 			if err != nil {
 				return nil, err
 			}
-			slots = append(slots, &Slots{Start: lines[0], End: lines[1], Master: master, Slaves: make([]*RedisPod, 0)})
+			start, err := strconv.Atoi(lines[0])
+			if err != nil {
+				return nil, err
+			}
+			end, err := strconv.Atoi(lines[1])
+			if err != nil {
+				return nil, err
+			}
+			slots = append(slots, &Slots{Start: start, End: end, Master: master, Slaves: make([]*RedisPod, 0)})
 			lines = lines[5:]
 		}
 	}
