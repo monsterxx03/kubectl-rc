@@ -19,7 +19,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
-package cmd
+package main
 
 import (
 	"fmt"
@@ -27,31 +27,34 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	failoverForce bool
-	failoverTakeforce bool
-)
-// failoverCmd represents the failover command
-var failoverCmd = &cobra.Command{
-	Use:   "failover <slave-pod>",
-	Short: "Promote a slave to master",
-	Args: cobra.ExactArgs(1),
+// addNodeCmd represents the addNode command
+var addNodeCmd = &cobra.Command{
+	Use:   "add-node <new pod> <existing pod>",
+	Short: "Make a pod join redis-cluster",
+	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		pod, err := redis.NewRedisPod(args[0], containerName, namespace, redisPort, clientset, restcfg)
+		newPod, err := redis.NewRedisPod(args[0], containerName, namespace, redisPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}
-		if res, err := pod.ClusterFailover(failoverForce, failoverTakeforce); err != nil {
+		existingPod, err := redis.NewRedisPod(args[1], containerName, namespace, redisPort, clientset, restcfg)
+		if err != nil {
 			return err
-		} else {
-			fmt.Println(res)
 		}
+		slave, err := cmd.Flags().GetBool("slave")
+		if err != nil {
+			return err
+		}
+		res, err := existingPod.ClusterAddNode(newPod, slave)
+		if err != nil {
+			return err
+		}
+		fmt.Println(res)
 		return nil
 	},
 }
 
 func init() {
-	failoverCmd.Flags().BoolVar(&failoverForce,"force", false, "do manual failover without handshake with master")
-	failoverCmd.Flags().BoolVar(&failoverTakeforce,"takeover", false, "do manual failover without cluster consensus")
-	rootCmd.AddCommand(failoverCmd)
+	addNodeCmd.Flags().Bool("slave", false, "make <new pod> slave of <existing pod>")
+	rootCmd.AddCommand(addNodeCmd)
 }

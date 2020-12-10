@@ -19,34 +19,31 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
-package cmd
+package main
 
 import (
-	"sort"
-	"errors"
 	"fmt"
-	"github.com/monsterxx03/kuberc/pkg/redis"
+	"errors"
 	"github.com/spf13/cobra"
-	restclient "k8s.io/client-go/rest"
+	"os"
+
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	"os"
+	restclient "k8s.io/client-go/rest"
 )
 
 var cfgFile string
-var namespace string
-var containerName string
-var redisPort int
+var sentinelNamespace string
+var sentinelContainerName string
+var sentinelPort int
 var restcfg *restclient.Config
 var clientset *kubernetes.Clientset
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "rc",
-	Short: "Manage redis cluster on k8s",
-	Long: `Used as a kubectl plugin, to get redis cluster info, 
-replace redis nodes on k8s.
-`,
+	Use:   "sen",
+	Short: "Manage redis-sentinel on k8s",
+	Long: `Used as kubectl plugin. Get redis pods monitored by redis-sentinel, to failover, replace pods.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if cfgFile == "" {
 			cfgFile = os.Getenv("KUBECONFIG")
@@ -75,33 +72,13 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().IntVarP(&redisPort, "port", "p", 6379, "redis port")
-	rootCmd.PersistentFlags().StringVarP(&namespace, "namespace", "n", "default", "namespace")
-	rootCmd.PersistentFlags().StringVarP(&containerName, "container", "c", "", "container name")
+	rootCmd.PersistentFlags().IntVarP(&sentinelPort, "port", "p", 26379, "redis-sentinel port")
+	rootCmd.PersistentFlags().StringVarP(&sentinelNamespace, "namespace", "n", "default", "sentinel pod namespace")
+	rootCmd.PersistentFlags().StringVarP(&sentinelContainerName, "container", "c", "", "sentinel container name")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "kubeconfig used for kubectl, will try to load from $KUBECONFIG first")
 }
 
 
-func getClusterPods(podname string, all bool) ([]*redis.RedisPod, error) {
-	pod, err := redis.NewRedisPod(podname, containerName, namespace, redisPort, clientset, restcfg)
-	if err != nil {
-		return nil, err
-	}
-	pods := make([]*redis.RedisPod, 0)
-	if all {
-		if nodes, err := pod.ClusterNodes(); err != nil {
-			return nil, err
-		} else {
-			for _, n := range nodes {
-				pods = append(pods, redis.NewRedisPodWithPod(n.Pod, containerName, redisPort, clientset, restcfg))
-			}
-		}
-	} else {
-		pods = append(pods, pod)
-	}
-	sort.Slice(pods, func(i, j int) bool {
-		return pods[i].GetName() < pods[j].GetName()
-	})
-	return pods, nil
+func main() {
+	Execute()
 }
-

@@ -21,8 +21,32 @@ THE SOFTWARE.
 */
 package main
 
-import "github.com/monsterxx03/kuberc/cmd"
+import (
+	"fmt"
+	"github.com/spf13/cobra"
 
-func main() {
-	cmd.Execute()
+	"github.com/monsterxx03/kuberc/pkg/redis"
+)
+
+// infoCmd represents the info command
+var infoCmd = &cobra.Command{
+	Use:   "info <pod>",
+	Short: "Get redis cluster info",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		p, err := redis.NewRedisPod(args[0], containerName, namespace, redisPort, clientset, restcfg)
+		if err != nil {
+			return err
+		}
+		if res, err := p.ClusterInfo(); err != nil {
+			return err
+		} else {
+			fmt.Println(res)
+		}
+		return nil
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(infoCmd)
 }

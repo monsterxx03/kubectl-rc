@@ -19,7 +19,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
-package cmd
+package main
 
 import (
 	"fmt"
@@ -27,29 +27,34 @@ import (
 	"github.com/spf13/cobra"
 	"os"
 	"sort"
+	"strings"
 	"text/tabwriter"
 )
 
-// nodesCmd represents the nodes command
-var nodesCmd = &cobra.Command{
-	Use:   "nodes <pod>",
-	Short: "List nodes in redis cluster",
+// slotsCmd represents the slots command
+var slotsCmd = &cobra.Command{
+	Use:   "slots <pod>",
+	Short: "Get cluster slots info",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := redis.NewRedisPod(args[0], containerName, namespace, redisPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}
-		if nodes, err := p.ClusterNodes(); err != nil {
+		if slots, err := p.ClusterSlots(); err != nil {
 			return err
 		} else {
-			sort.Slice(nodes, func(i, j int) bool {
-				return nodes[i].Pod.GetName() < nodes[j].Pod.GetName()
+			sort.Slice(slots, func(i, j int) bool {
+				return slots[i].Start < slots[j].End
 			})
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight)
-			fmt.Fprintln(w, "Pod\tIP\tNodeID\tHost\tIsMaster\tSlots\t")
-			for _, n := range nodes {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%t\t%d\t\n", n.Pod.Name, n.IP, n.ID, n.Pod.Spec.NodeName, n.IsMaster(), n.SlotsCount())
+			fmt.Fprintln(w, "slots\tmaster\tslaves\t")
+			for _, s := range slots {
+				slaves := make([]string, 0, len(s.Slaves))
+				for _, slave := range s.Slaves {
+					slaves = append(slaves, slave.GetName())
+				}
+				fmt.Fprintf(w, "%d-%d\t%s\t%s\t\n", s.Start, s.End, s.Master.GetName(), strings.Join(slaves, " "))
 			}
 			w.Flush()
 		}
@@ -58,5 +63,6 @@ var nodesCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(nodesCmd)
+	rootCmd.AddCommand(slotsCmd)
+
 }

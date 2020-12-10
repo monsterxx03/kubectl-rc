@@ -19,41 +19,40 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
-package cmd
+package main
 
 import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/monsterxx03/kuberc/pkg/sentinel"
 )
 
-// callCmd represents the call command
-var callCmd = &cobra.Command{
-	Use:   "call <pod> <cmd> <val>...",
-	Short: "Run command on redis node",
-	Args: cobra.MinimumNArgs(2),
+// infoCmd represents the info command
+var infoCmd = &cobra.Command{
+	Use:   "info <sentinel-pod>",
+	Short: "Get sentinel info",
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		all, err := cmd.Flags().GetBool("all")
+		sen, err := sentinel.NewSentinelPod(args[0], sentinelContainerName, sentinelNamespace, sentinelPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}
-		pods, err := getClusterPods(args[0], all)
-		if err != nil {
-			return err
-		}
-		for _, p := range pods {
-			fmt.Println(">>> " + p.GetName() + ":")
-			if res, err := p.Call(args[1:]...); err != nil {
-				return err
-			} else {
-				fmt.Println(res)
-			}
-		}
+		fmt.Println(sen)
 		return nil
 	},
 }
 
 func init() {
-	callCmd.Flags().Bool("all", false, "run on all redis nodes")
-	rootCmd.AddCommand(callCmd)
+	rootCmd.AddCommand(infoCmd)
+
+	// Here you will define your flags and configuration settings.
+
+	// Cobra supports Persistent Flags which will work for this command
+	// and all subcommands, e.g.:
+	// infoCmd.PersistentFlags().String("foo", "", "A help for foo")
+
+	// Cobra supports local flags which will only run when this command
+	// is called directly, e.g.:
+	// infoCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

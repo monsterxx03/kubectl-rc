@@ -19,29 +19,44 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
-package cmd
+package main
 
 import (
+	"fmt"
 	"github.com/monsterxx03/kuberc/pkg/redis"
 	"github.com/spf13/cobra"
 )
 
-// checkCmd represents the check command
-var checkCmd = &cobra.Command{
-	Use:   "check",
-	Short: "Check nodes for slots configuration",
+var (
+	createReplicas int
+	createYes      bool
+)
+
+// createCmd represents the create command
+var createCmd = &cobra.Command{
+	Use:   "create <pod1> <pod2> ...",
+	Short: "Create redis cluster",
+	Args:  cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		p, err := redis.NewRedisPod(args[0], containerName, namespace, redisPort, clientset, restcfg)
-		if err != nil {
-			return err
+		pods := make([]*redis.RedisPod, 0, len(args))
+		for _, name := range args {
+			p, err := redis.NewRedisPod(name, containerName, namespace, redisPort, clientset, restcfg)
+			if err != nil {
+				return err
+			}
+			pods = append(pods, p)
 		}
-		if err := p.ClusterCheck(); err != nil {
+		if res, err := pods[0].ClusterCreate(createReplicas, createYes, pods[1:]...); err != nil {
 			return err
+		} else {
+			fmt.Println(res)
 		}
 		return nil
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(checkCmd)
+	createCmd.Flags().IntVar(&createReplicas, "replicas", 0, "replicas in cluster")
+	createCmd.Flags().BoolVar(&createYes, "yes", false, "don't ask")
+	rootCmd.AddCommand(createCmd)
 }

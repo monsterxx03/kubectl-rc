@@ -19,44 +19,41 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
-package cmd
+package main
 
 import (
 	"fmt"
-	"github.com/monsterxx03/kuberc/pkg/redis"
+
 	"github.com/spf13/cobra"
 )
 
-var (
-	createReplicas int
-	createYes      bool
-)
-
-// createCmd represents the create command
-var createCmd = &cobra.Command{
-	Use:   "create <pod1> <pod2> ...",
-	Short: "Create redis cluster",
-	Args:  cobra.MinimumNArgs(2),
+// callCmd represents the call command
+var callCmd = &cobra.Command{
+	Use:   "call <pod> <cmd> <val>...",
+	Short: "Run command on redis node",
+	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		pods := make([]*redis.RedisPod, 0, len(args))
-		for _, name := range args {
-			p, err := redis.NewRedisPod(name, containerName, namespace, redisPort, clientset, restcfg)
-			if err != nil {
-				return err
-			}
-			pods = append(pods, p)
-		}
-		if res, err := pods[0].ClusterCreate(createReplicas, createYes, pods[1:]...); err != nil {
+		all, err := cmd.Flags().GetBool("all")
+		if err != nil {
 			return err
-		} else {
-			fmt.Println(res)
+		}
+		pods, err := getClusterPods(args[0], all)
+		if err != nil {
+			return err
+		}
+		for _, p := range pods {
+			fmt.Println(">>> " + p.GetName() + ":")
+			if res, err := p.Call(args[1:]...); err != nil {
+				return err
+			} else {
+				fmt.Println(res)
+			}
 		}
 		return nil
 	},
 }
 
 func init() {
-	createCmd.Flags().IntVar(&createReplicas, "replicas", 0, "replicas in cluster")
-	createCmd.Flags().BoolVar(&createYes, "yes", false, "don't ask")
-	rootCmd.AddCommand(createCmd)
+	callCmd.Flags().Bool("all", false, "run on all redis nodes")
+	rootCmd.AddCommand(callCmd)
 }

@@ -19,42 +19,29 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
-package cmd
+package main
 
 import (
-	"fmt"
 	"github.com/monsterxx03/kuberc/pkg/redis"
 	"github.com/spf13/cobra"
 )
 
-// addNodeCmd represents the addNode command
-var addNodeCmd = &cobra.Command{
-	Use:   "add-node <new pod> <existing pod>",
-	Short: "Make a pod join redis-cluster",
-	Args: cobra.ExactArgs(2),
+// checkCmd represents the check command
+var checkCmd = &cobra.Command{
+	Use:   "check",
+	Short: "Check nodes for slots configuration",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		newPod, err := redis.NewRedisPod(args[0], containerName, namespace, redisPort, clientset, restcfg)
+		p, err := redis.NewRedisPod(args[0], containerName, namespace, redisPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}
-		existingPod, err := redis.NewRedisPod(args[1], containerName, namespace, redisPort, clientset, restcfg)
-		if err != nil {
+		if err := p.ClusterCheck(); err != nil {
 			return err
 		}
-		slave, err := cmd.Flags().GetBool("slave")
-		if err != nil {
-			return err
-		}
-		res, err := existingPod.ClusterAddNode(newPod, slave)
-		if err != nil {
-			return err
-		}
-		fmt.Println(res)
 		return nil
 	},
 }
 
 func init() {
-	addNodeCmd.Flags().Bool("slave", false, "make <new pod> slave of <existing pod>")
-	rootCmd.AddCommand(addNodeCmd)
+	rootCmd.AddCommand(checkCmd)
 }

@@ -19,33 +19,44 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
-package cmd
+package main
 
 import (
 	"fmt"
 	"github.com/monsterxx03/kuberc/pkg/redis"
 	"github.com/spf13/cobra"
+	"os"
+	"sort"
+	"text/tabwriter"
 )
 
-// delNodeCmd represents the delNode command
-var delNodeCmd = &cobra.Command{
-	Use:   "del-node <pod>",
-	Short: "Delete a node from redis cluster",
+// nodesCmd represents the nodes command
+var nodesCmd = &cobra.Command{
+	Use:   "nodes <pod>",
+	Short: "List nodes in redis cluster",
 	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error{
-		pod, err := redis.NewRedisPod(args[0], containerName, namespace, redisPort, clientset, restcfg)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		p, err := redis.NewRedisPod(args[0], containerName, namespace, redisPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}
-		if res, err := pod.ClusterDelNode(); err != nil {
+		if nodes, err := p.ClusterNodes(); err != nil {
 			return err
 		} else {
-			fmt.Println(res)
+			sort.Slice(nodes, func(i, j int) bool {
+				return nodes[i].Pod.GetName() < nodes[j].Pod.GetName()
+			})
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight)
+			fmt.Fprintln(w, "Pod\tIP\tNodeID\tHost\tIsMaster\tSlots\t")
+			for _, n := range nodes {
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%t\t%d\t\n", n.Pod.Name, n.IP, n.ID, n.Pod.Spec.NodeName, n.IsMaster(), n.SlotsCount())
+			}
+			w.Flush()
 		}
 		return nil
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(delNodeCmd)
+	rootCmd.AddCommand(nodesCmd)
 }

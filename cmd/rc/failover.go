@@ -19,26 +19,29 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
-package cmd
+package main
 
 import (
 	"fmt"
-	"github.com/spf13/cobra"
-
 	"github.com/monsterxx03/kuberc/pkg/redis"
+	"github.com/spf13/cobra"
 )
 
-// infoCmd represents the info command
-var infoCmd = &cobra.Command{
-	Use:   "info <pod>",
-	Short: "Get redis cluster info",
-	Args:  cobra.ExactArgs(1),
+var (
+	failoverForce bool
+	failoverTakeforce bool
+)
+// failoverCmd represents the failover command
+var failoverCmd = &cobra.Command{
+	Use:   "failover <slave-pod>",
+	Short: "Promote a slave to master",
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		p, err := redis.NewRedisPod(args[0], containerName, namespace, redisPort, clientset, restcfg)
+		pod, err := redis.NewRedisPod(args[0], containerName, namespace, redisPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}
-		if res, err := p.ClusterInfo(); err != nil {
+		if res, err := pod.ClusterFailover(failoverForce, failoverTakeforce); err != nil {
 			return err
 		} else {
 			fmt.Println(res)
@@ -48,5 +51,7 @@ var infoCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(infoCmd)
+	failoverCmd.Flags().BoolVar(&failoverForce,"force", false, "do manual failover without handshake with master")
+	failoverCmd.Flags().BoolVar(&failoverTakeforce,"takeover", false, "do manual failover without cluster consensus")
+	rootCmd.AddCommand(failoverCmd)
 }
