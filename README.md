@@ -4,7 +4,10 @@ Operate on k8s pods, not confusing ip and node id in redis-cluster.
 
 ### Install
 
-go get github.com/monsterxx03/kubectl-rc
+Download binary from release page: https://github.com/monsterxx03/kubectl-rc/releases
+
+- wget https://github.com/monsterxx03/kubectl-rc/releases/download/v0.1.0/kubectl-rc_darwin_amd64 -O kubectl-rc
+- chmod +x kubectl-rc && sudo mv kubectl-rc /usr/local/bin/
 
 kubectl rc help
 
