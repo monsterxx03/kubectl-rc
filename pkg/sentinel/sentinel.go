@@ -164,6 +164,16 @@ func (s *SentinelPod) Master(name string) error {
 
 
 func (s *SentinelPod) Failover(name string) error {
+	if err := s.sentinelPortForwarder.Start(); err != nil {
+		return err
+	}
+	defer s.sentinelPortForwarder.Stop()
+	ctx := context.Background()
+	res, err := s.sentinelClient.Failover(ctx, name).Result()
+	if err != nil {
+		return err
+	}
+	fmt.Println(res)
 	return nil
 }
 
