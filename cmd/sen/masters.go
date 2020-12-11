@@ -22,27 +22,24 @@ THE SOFTWARE.
 package main
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"github.com/monsterxx03/kuberc/pkg/sentinel"
 )
 
 // infoCmd represents the info command
-var infoCmd = &cobra.Command{
-	Use:   "info <sentinel-pod>",
-	Short: "Get sentinel info",
+var mastersCmd = &cobra.Command{
+	Use:   "masters <sentinel-pod>",
+	Short: "List redis masters",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sen, err := sentinel.NewSentinelPod(args[0], sentinelContainerName, sentinelNamespace, sentinelPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}
-		fmt.Println(sen)
-		return nil
+		return sen.Masters()
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(infoCmd)
+	rootCmd.AddCommand(mastersCmd)
 }

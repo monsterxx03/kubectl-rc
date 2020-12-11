@@ -1,21 +1,18 @@
 package redis
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"os"
 	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
 	restclient "k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/remotecommand"
+
+	"github.com/monsterxx03/kuberc/pkg/common"
 )
 
 type RedisPod struct {
@@ -328,7 +325,7 @@ func (r *RedisPod) ClusterDelNode() (result string, err error) {
 }
 
 func (r *RedisPod) redisCliCluster(cmd string, toStdout, toStdin bool) (string, error) {
-	return r.execute(fmt.Sprintf("redis-cli --cluster %s", cmd), toStdout, toStdin)
+	return common.Execute(r.clientset, r.restcfg, &common.ExecTarget{Pod: r.pod, Container: r.redisContainerName}, fmt.Sprintf("redis-cli --cluster %s", cmd), toStdout, toStdin)
 }
 
 func (r *RedisPod) redisCliLocal(cmd string, raw bool) (string, error) {
@@ -342,51 +339,9 @@ func (r *RedisPod) redisCli(cmd string, raw bool, host string, port int) (string
 	} else {
 		c = fmt.Sprintf("redis-cli -c -h %s -p %d %s", host, port, cmd)
 	}
-	return r.execute(c, false, false)
+	return common.Execute(r.clientset, r.restcfg, &common.ExecTarget{Pod: r.pod, Container: r.redisContainerName}, c, false, false)
 }
 
-func (r *RedisPod) execute(cmd string, toStdout bool, toStdin bool) (string, error) {
-	req := r.clientset.CoreV1().RESTClient().Post().Resource("pods").Name(r.pod.Name).Namespace(r.pod.Namespace).SubResource("exec")
-	fmt.Println(cmd)
-	containerName := r.pod.Spec.Containers[0].Name
-	if r.redisContainerName != "" {
-		containerName = r.redisContainerName
-	}
-	req.VersionedParams(&corev1.PodExecOptions{
-		Container: containerName,
-		Command:   []string{"sh", "-c", cmd},
-		Stdin:     toStdin,
-		Stderr:    true,
-		Stdout:    true,
-		TTY:       true,
-	}, scheme.ParameterCodec)
-	exec, err := remotecommand.NewSPDYExecutor(r.restcfg, "POST", req.URL())
-	if err != nil {
-		return "", err
-	}
-	var stdout io.Writer
-	var stdin io.Reader
-	buf := new(bytes.Buffer)
-	if toStdout {
-		stdout = os.Stdout
-	} else {
-		stdout = buf
-	}
-	if toStdin {
-		stdin = os.Stdin
-	}
-	opt := remotecommand.StreamOptions{
-		Stdin:  stdin,
-		Stdout: stdout,
-		Stderr: os.Stderr,
-	}
-	err = exec.Stream(opt)
-	if err != nil {
-		fmt.Println(buf.String())
-		return "", err
-	}
-	return buf.String(), nil
-}
 
 func (p *RedisPod) getPodsInStatefulSet() (map[string]corev1.Pod, error) {
 	stsName := ""
