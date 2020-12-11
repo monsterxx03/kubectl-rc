@@ -23,19 +23,24 @@ package main
 
 import (
 	"fmt"
+	"flag"
 	"errors"
 	"github.com/spf13/cobra"
 	"os"
 
+	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	restclient "k8s.io/client-go/rest"
+	"github.com/monsterxx03/kuberc/pkg/common"
+	"k8s.io/klog/v2"
 )
 
 var cfgFile string
 var sentinelNamespace string
 var sentinelContainerName string
 var sentinelPort int
+var redisPort int
 var restcfg *restclient.Config
 var clientset *kubernetes.Clientset
 
@@ -60,6 +65,9 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if err := common.CheckPort(sentinelPort); err != nil {
+			return err
+		}
 		return nil
 	},
 }
@@ -73,9 +81,12 @@ func Execute() {
 
 func init() {
 	rootCmd.PersistentFlags().IntVarP(&sentinelPort, "port", "p", 26379, "redis-sentinel port")
+	rootCmd.PersistentFlags().IntVarP(&redisPort, "redis-port", "", 6379, "redis port")
 	rootCmd.PersistentFlags().StringVarP(&sentinelNamespace, "namespace", "n", "default", "sentinel pod namespace")
 	rootCmd.PersistentFlags().StringVarP(&sentinelContainerName, "container", "c", "", "sentinel container name")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "kubeconfig used for kubectl, will try to load from $KUBECONFIG first")
+	klog.InitFlags(nil)
+	pflag.CommandLine.AddGoFlag(flag.CommandLine.Lookup("v"))
 }
 
 

@@ -34,7 +34,7 @@ var infoCmd = &cobra.Command{
 	Short: "Get sentinel info",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sen, err := sentinel.NewSentinelPod(args[0], sentinelContainerName, sentinelNamespace, sentinelPort, clientset, restcfg)
+		sen, err := sentinel.NewSentinelPod(args[0], sentinelContainerName, sentinelNamespace, sentinelPort, redisPort, clientset, restcfg)
 		if err != nil {
 			return err
 		}

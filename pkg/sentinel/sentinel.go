@@ -3,6 +3,7 @@ package sentinel
 import (
 	"context"
 	"fmt"
+	"strings"
 	"strconv"
 
 	corev1 "k8s.io/api/core/v1"
@@ -18,41 +19,49 @@ type SentinelPod struct {
 	sentinelContainerName string
 	sentinelPort               int
 	sentinelClient 		*redis.SentinelClient
+	sentinelPortForwarder *common.PortForwarder
+	redisPort int
 	clientset          *kubernetes.Clientset
 	restcfg            *restclient.Config
 	podsCache    []corev1.Pod
 }
 
-type MasterInfo struct {
+type RedisPod struct {
 	Name string
+	Port int
 	Pod *corev1.Pod
 	IP string
 	RoleReported string
+	Flags string
+	PortForwarder *common.PortForwarder
+}
+
+type MasterPod struct {
+	RedisPod
 	NumSlaves int
-	Flags string
-	Slaves []*SlaveInfo
+	Slaves []*SlavePod
 }
 
-type SlaveInfo struct {
-	Name string
-	Pod *corev1.Pod
-	IP string
-	RoleReported string
-	Flags string
-}
-
-func (m *MasterInfo) PrettyPrint() {
+func (m *MasterPod) PrettyPrint() {
 	fmt.Println("Master Name:", m.Name)
 	fmt.Println("Pod:", m.Pod.Name)
 	fmt.Println("IP:", m.IP)
 	fmt.Println("Flags:", m.Flags)
 	fmt.Println("Slaves:")
 	for _, s := range m.Slaves {
-		fmt.Printf("\tPod:%s, IP:%s, Flags:%s\n", s.Pod.Name, s.IP, s.Flags)
+		if err := s.PortForwarder.Start(); err != nil {
+			panic(err)
+		}
+		info, err := s.GetSyncStatus()
+		if err != nil {
+			panic(err)
+		}
+		s.PortForwarder.Stop()
+		fmt.Printf("\tPod:%s, IP:%s, Flags:%s, LinkStatus:%s, IOSecAgo:%s, InSync:%s\n", s.Pod.Name, s.IP, s.Flags, info["master_link_status"], info["master_last_io_seconds_ago"], info["master_sync_in_progress"])
 	}
 }
 
-func (m *MasterInfo) String() string {
+func (m *MasterPod) String() string {
 	pname := ""
 	if m.Pod != nil {
 		pname = m.Pod.Name
@@ -61,8 +70,21 @@ func (m *MasterInfo) String() string {
 }
 
 
-func NewSentinelPod(podname string, sentinelContainerName string, namespace string, port int, clientset *kubernetes.Clientset, restcfg *restclient.Config) (*SentinelPod, error) {
-	pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podname, metav1.GetOptions{})
+type SlavePod struct {
+	RedisPod
+}
+
+func (s *SlavePod) GetSyncStatus() (map[string]string, error) {
+	client := redis.NewClient(&redis.Options{Addr: fmt.Sprintf("localhost:%d", s.Port)})
+	result, err := client.Info(context.Background(), "replication").Result()
+	if err != nil {
+		return nil, err
+	}
+	return parseRedisInfo(result), nil
+}
+
+func NewSentinelPod(sentinelPodName string, sentinelContainerName string, namespace string, sentinelPort, redisPort int, clientset *kubernetes.Clientset, restcfg *restclient.Config) (*SentinelPod, error) {
+	pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), sentinelPodName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -74,11 +96,16 @@ func NewSentinelPod(podname string, sentinelContainerName string, namespace stri
 			}
 		}
 		if !hasContainer {
-			return nil, fmt.Errorf("can't find container %s in pod %s", sentinelContainerName, podname)
+			return nil, fmt.Errorf("can't find container %s in pod %s", sentinelContainerName, sentinelPodName)
 		}
 	}
-	return &SentinelPod{pod: pod, sentinelContainerName: sentinelContainerName, sentinelPort: port,
-						sentinelClient: redis.NewSentinelClient(&redis.Options{Addr: fmt.Sprintf("localhost:%d", port)}),
+	forwarder, err := common.NewPortForwarder(clientset, restcfg, pod, sentinelPort, sentinelPort)
+	if err != nil {
+		return nil, err
+	}
+	return &SentinelPod{pod: pod, sentinelContainerName: sentinelContainerName, sentinelPort: sentinelPort,
+						sentinelClient: redis.NewSentinelClient(&redis.Options{Addr: fmt.Sprintf("localhost:%d", sentinelPort)}),
+						sentinelPortForwarder: forwarder, redisPort: redisPort,
 						clientset: clientset, restcfg: restcfg}, nil
 }
 
@@ -86,10 +113,13 @@ func (s *SentinelPod) Info() error {
 	return nil
 }
 
+
 func (s *SentinelPod) Masters() error {
-	//if err := common.PortForward(s.clientset, s.restcfg, s.pod, s.sentinelPort, s.sentinelPort); err != nil {
-	//	return err
-	//}
+	if err := s.sentinelPortForwarder.Start(); err != nil {
+		return err
+	}
+	defer s.sentinelPortForwarder.Stop()
+
 	result, err := s.sentinelClient.Masters(context.Background()).Result()
 	if err != nil {
 		return err
@@ -105,12 +135,17 @@ func (s *SentinelPod) Masters() error {
 }
 
 func (s *SentinelPod) Master(name string) error {
+	if err := s.sentinelPortForwarder.Start(); err != nil {
+		return err
+	}
+	defer s.sentinelPortForwarder.Stop()
+
 	ctx := context.Background()
 	mres, err := s.sentinelClient.Master(ctx, name).Result()
 	if err != nil {
 		return err
 	}
-	m, err := s.parseMaster(mres)
+	m, err := s.newMasterPod(mres)
 	if err != nil {
 		return err
 	}
@@ -179,42 +214,64 @@ func (s *SentinelPod) execute(cmd string) (string, error) {
 	return result, nil
 }
 
-func (s *SentinelPod) parseMasters(result []interface{}) ([]*MasterInfo, error) {
-	masters := make([]*MasterInfo, 0, len(result))
+func (s *SentinelPod) parseMasters(result []interface{}) ([]*MasterPod, error) {
+	masters := make([]*MasterPod, 0, len(result))
 	for _, item := range parseSentinelSliceResult(result) {
-		m := newMasterInfo(item)
-		pod, err := s.getPodByIP(m.IP)
+		m, err := s.newMasterPod(item)
 		if err != nil {
 			return nil, err
 		}
-		m.Pod = pod
 		masters = append(masters, m)
 	}
 	return masters, nil
 }
 
-func (s *SentinelPod) parseSlaves(result []interface{}) ([]*SlaveInfo, error) {
-	slaves := make([]*SlaveInfo, 0, len(result))
+func (s *SentinelPod) parseSlaves(result []interface{}) ([]*SlavePod, error) {
+	slaves := make([]*SlavePod, 0, len(result))
 	for _, item := range parseSentinelSliceResult(result) {
-		m := newSlaveInfo(item)
-		pod, err := s.getPodByIP(m.IP)
+		slave, err := s.newSlavePod(item)
 		if err != nil {
 			return nil, err
 		}
-		m.Pod = pod
-		slaves = append(slaves, m)
+		slaves = append(slaves, slave)
 	}
 	return slaves, nil
 }
 
-func (s *SentinelPod) parseMaster(result map[string]string) (*MasterInfo , error) {
-	m := newMasterInfo(result)
-	pod, err := s.getPodByIP(m.IP)
+func (s *SentinelPod) newSlavePod(result map[string]string) (slave *SlavePod, err error) {
+	slave = new(SlavePod)
+	slave.Port = s.redisPort
+	slave.Name = result["name"]
+	slave.IP = result["ip"]
+	slave.Flags = result["flags"]
+	slave.RoleReported = result["role-reported"]
+
+	pod, err := s.getPodByIP(slave.IP)
 	if err != nil {
 		return nil, err
 	}
-	m.Pod = pod
-	return m, nil
+	slave.PortForwarder, err  = common.NewPortForwarder(s.clientset, s.restcfg, pod, s.redisPort, s.redisPort)
+	if err != nil {
+		return nil, err
+	}
+	slave.Pod = pod
+	return
+}
+
+func (s *SentinelPod) newMasterPod(result map[string]string) (master *MasterPod, err error) {
+	master = new(MasterPod)
+	master.Name = result["name"]
+	master.IP = result["ip"]
+	master.Flags = result["flags"]
+	master.RoleReported = result["role-reported"]
+	master.NumSlaves, err = strconv.Atoi(result["num-slaves"])
+	pod, err := s.getPodByIP(master.IP)
+	if err != nil {
+		return nil, err
+	}
+	master.Pod = pod
+	master.PortForwarder, err = common.NewPortForwarder(s.clientset, s.restcfg, pod, s.redisPort, s.redisPort)
+	return
 }
 
 func parseSentinelSliceResult(result []interface{}) []map[string]string {
@@ -234,22 +291,14 @@ func parseSentinelSliceResult(result []interface{}) []map[string]string {
 	return res
 }
 
-func newMasterInfo(result map[string]string) *MasterInfo {
-	master := new(MasterInfo)
-	master.Name = result["name"]
-	master.IP = result["ip"]
-	master.Flags = result["flags"]
-	master.RoleReported = result["role-reported"]
-	master.NumSlaves, _ = strconv.Atoi(result["num-slaves"])
-	return master
-}
 
-
-func newSlaveInfo(result map[string]string) *SlaveInfo {
-	slave := new(SlaveInfo)
-	slave.Name = result["name"]
-	slave.IP = result["ip"]
-	slave.Flags = result["flags"]
-	slave.RoleReported = result["role-reported"]
-	return slave
+func parseRedisInfo(result string) (info map[string]string) {
+	info = make(map[string]string)
+	for _, line := range strings.Split(result, "\n") {
+		parts := strings.Split(strings.TrimSpace(line), ":")
+		if len(parts) >= 2 {
+			info[parts[0]] = parts[1]
+		}
+	}
+	return 
 }

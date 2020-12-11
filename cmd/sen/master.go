@@ -32,7 +32,7 @@ var masterCmd = &cobra.Command{
 	Short: "Show redis master pod info",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sen, err := sentinel.NewSentinelPod(args[0], sentinelContainerName, sentinelNamespace, sentinelPort, clientset, restcfg)
+		sen, err := sentinel.NewSentinelPod(args[0], sentinelContainerName, sentinelNamespace, sentinelPort, redisPort,clientset, restcfg)
 		if err != nil {
 			return err
 		}
