@@ -3,39 +3,39 @@ package sentinel
 import (
 	"context"
 	"fmt"
-	"strings"
 	"strconv"
+	"strings"
 
+	"github.com/go-redis/redis/v8"
+	"github.com/monsterxx03/kuberc/pkg/common"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
-	"github.com/go-redis/redis/v8"
-	"github.com/monsterxx03/kuberc/pkg/common"
+	"k8s.io/klog/v2"
 )
 
 type SentinelPod struct {
-	pod                *corev1.Pod
+	pod                   *corev1.Pod
 	sentinelContainerName string
-	sentinelPort               int
-	sentinelClient 		*redis.SentinelClient
+	sentinelPort          int
+	sentinelClient        *redis.SentinelClient
 	sentinelPortForwarder *common.PortForwarder
-	redisPort int
-	clientset          *kubernetes.Clientset
-	restcfg            *restclient.Config
-	podsCache    []corev1.Pod
+	redisPort             int
+	clientset             *kubernetes.Clientset
+	restcfg               *restclient.Config
+	podsCache             []corev1.Pod
 }
 
 type RedisPod struct {
-	Name string
-	Port int
-	Pod *corev1.Pod
-	IP string
-	RoleReported string
-	Flags string
+	Name          string
+	Port          int
+	Pod           *corev1.Pod
+	IP            string
+	RoleReported  string
+	Flags         string
 	PortForwarder *common.PortForwarder
 }
-
 
 func NewSentinelPod(sentinelPodName string, sentinelContainerName string, namespace string, sentinelPort, redisPort int, clientset *kubernetes.Clientset, restcfg *restclient.Config) (*SentinelPod, error) {
 	pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), sentinelPodName, metav1.GetOptions{})
@@ -53,20 +53,16 @@ func NewSentinelPod(sentinelPodName string, sentinelContainerName string, namesp
 			return nil, fmt.Errorf("can't find container %s in pod %s", sentinelContainerName, sentinelPodName)
 		}
 	}
-	forwarder, err := common.NewPortForwarder(clientset, restcfg, pod, sentinelPort, sentinelPort)
-	if err != nil {
-		return nil, err
-	}
+	forwarder := common.NewPortForwarder(clientset, restcfg, pod, sentinelPort, sentinelPort)
 	return &SentinelPod{pod: pod, sentinelContainerName: sentinelContainerName, sentinelPort: sentinelPort,
-						sentinelClient: redis.NewSentinelClient(&redis.Options{Addr: fmt.Sprintf("localhost:%d", sentinelPort)}),
-						sentinelPortForwarder: forwarder, redisPort: redisPort,
-						clientset: clientset, restcfg: restcfg}, nil
+		sentinelClient:        redis.NewSentinelClient(&redis.Options{Addr: fmt.Sprintf("localhost:%d", sentinelPort)}),
+		sentinelPortForwarder: forwarder, redisPort: redisPort,
+		clientset: clientset, restcfg: restcfg}, nil
 }
 
 func (s *SentinelPod) Info() error {
 	return nil
 }
-
 
 func (s *SentinelPod) Masters() error {
 	if err := s.sentinelPortForwarder.Start(); err != nil {
@@ -116,7 +112,6 @@ func (s *SentinelPod) Master(name string) error {
 	return nil
 }
 
-
 func (s *SentinelPod) Failover(name string) error {
 	if err := s.sentinelPortForwarder.Start(); err != nil {
 		return err
@@ -135,7 +130,7 @@ func (s *SentinelPod) Check(name string) error {
 	return nil
 }
 
-func (s *SentinelPod) getPodsInNamespace(namespace string) ([]corev1.Pod, error){
+func (s *SentinelPod) getPodsInNamespace(namespace string) ([]corev1.Pod, error) {
 	if s.podsCache != nil {
 		return s.podsCache, nil
 	}
@@ -148,14 +143,14 @@ func (s *SentinelPod) getPodsInNamespace(namespace string) ([]corev1.Pod, error)
 }
 
 func (s *SentinelPod) getPodByIP(ip string) (*corev1.Pod, error) {
-	pods, err := s.getPodsInNamespace(s.pod.Namespace)	
+	pods, err := s.getPodsInNamespace(s.pod.Namespace)
 	if err != nil {
 		return nil, err
 	}
 	for _, pod := range pods {
 		if pod.Status.PodIP == ip {
 			return &pod, nil
-		}	
+		}
 	}
 	return nil, fmt.Errorf("can't find pod with ip %s", ip)
 }
@@ -212,12 +207,10 @@ func (s *SentinelPod) newSlavePod(result map[string]string) (slave *SlavePod, er
 
 	pod, err := s.getPodByIP(slave.IP)
 	if err != nil {
-		return nil, err
+		klog.Error(err)
+		return slave, nil
 	}
-	slave.PortForwarder, err  = common.NewPortForwarder(s.clientset, s.restcfg, pod, s.redisPort, s.redisPort)
-	if err != nil {
-		return nil, err
-	}
+	slave.PortForwarder = common.NewPortForwarder(s.clientset, s.restcfg, pod, s.redisPort, s.redisPort)
 	slave.Pod = pod
 	return
 }
@@ -231,10 +224,11 @@ func (s *SentinelPod) newMasterPod(result map[string]string) (master *MasterPod,
 	master.NumSlaves, err = strconv.Atoi(result["num-slaves"])
 	pod, err := s.getPodByIP(master.IP)
 	if err != nil {
-		return nil, err
+		klog.Error(err)
+		return master, nil
 	}
 	master.Pod = pod
-	master.PortForwarder, err = common.NewPortForwarder(s.clientset, s.restcfg, pod, s.redisPort, s.redisPort)
+	master.PortForwarder = common.NewPortForwarder(s.clientset, s.restcfg, pod, s.redisPort, s.redisPort)
 	return
 }
 
@@ -244,7 +238,7 @@ func parseSentinelSliceResult(result []interface{}) []map[string]string {
 		tmp := make(map[string]string)
 		key := ""
 		for idx, v := range item.([]interface{}) {
-			if idx % 2 == 0 {
+			if idx%2 == 0 {
 				key = v.(string)
 			} else {
 				tmp[key] = v.(string)
@@ -255,7 +249,6 @@ func parseSentinelSliceResult(result []interface{}) []map[string]string {
 	return res
 }
 
-
 func parseRedisInfo(result string) (info map[string]string) {
 	info = make(map[string]string)
 	for _, line := range strings.Split(result, "\n") {
@@ -264,5 +257,5 @@ func parseRedisInfo(result string) (info map[string]string) {
 			info[parts[0]] = parts[1]
 		}
 	}
-	return 
+	return
 }
