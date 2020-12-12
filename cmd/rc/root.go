@@ -22,15 +22,15 @@ THE SOFTWARE.
 package main
 
 import (
-	"sort"
-	"errors"
 	"fmt"
+	"github.com/mitchellh/go-homedir"
 	"github.com/monsterxx03/kuberc/pkg/redis"
 	"github.com/spf13/cobra"
-	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/kubernetes"
+	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"os"
+	"sort"
 )
 
 var cfgFile string
@@ -48,13 +48,15 @@ var rootCmd = &cobra.Command{
 replace redis nodes on k8s.
 `,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		if cfgFile == "" {
+		var err error
+		if os.Getenv("KUBECONFIG") != "" {
 			cfgFile = os.Getenv("KUBECONFIG")
-			if cfgFile == "" {
-				return errors.New("missing kubeconfig")
+		} else {
+			cfgFile, err = homedir.Expand(cfgFile)
+			if err != nil {
+				return err
 			}
 		}
-		var err error
 		restcfg, err = clientcmd.BuildConfigFromFlags("", cfgFile)
 		if err != nil {
 			return err
@@ -81,7 +83,6 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "kubeconfig used for kubectl, will try to load from $KUBECONFIG first")
 }
 
-
 func getClusterPods(podname string, all bool) ([]*redis.RedisPod, error) {
 	pod, err := redis.NewRedisPod(podname, containerName, namespace, redisPort, clientset, restcfg)
 	if err != nil {
@@ -104,7 +105,6 @@ func getClusterPods(podname string, all bool) ([]*redis.RedisPod, error) {
 	})
 	return pods, nil
 }
-
 
 func main() {
 	Execute()

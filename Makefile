@@ -1,3 +1,5 @@
+all: build_rc build_sen
+
 build_rc:
 	go build -o bin/kubectl-rc ./cmd/rc 
 

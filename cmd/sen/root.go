@@ -22,17 +22,17 @@ THE SOFTWARE.
 package main
 
 import (
-	"fmt"
 	"flag"
-	"errors"
+	"fmt"
 	"github.com/spf13/cobra"
 	"os"
 
+	"github.com/mitchellh/go-homedir"
+	"github.com/monsterxx03/kuberc/pkg/common"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 	restclient "k8s.io/client-go/rest"
-	"github.com/monsterxx03/kuberc/pkg/common"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 )
 
@@ -48,15 +48,17 @@ var clientset *kubernetes.Clientset
 var rootCmd = &cobra.Command{
 	Use:   "sen",
 	Short: "Manage redis-sentinel on k8s",
-	Long: `Used as kubectl plugin. Get redis pods monitored by redis-sentinel, to failover, replace pods.`,
+	Long:  `Used as kubectl plugin. Get redis pods monitored by redis-sentinel, to failover, replace pods.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		if cfgFile == "" {
+		var err error
+		if os.Getenv("KUBECONFIG") != "" {
 			cfgFile = os.Getenv("KUBECONFIG")
-			if cfgFile == "" {
-				return errors.New("missing kubeconfig")
+		} else {
+			cfgFile, err = homedir.Expand(cfgFile)
+			if err != nil {
+				return err
 			}
 		}
-		var err error
 		restcfg, err = clientcmd.BuildConfigFromFlags("", cfgFile)
 		if err != nil {
 			return err
@@ -84,11 +86,10 @@ func init() {
 	rootCmd.PersistentFlags().IntVarP(&redisPort, "redis-port", "", 6379, "redis port")
 	rootCmd.PersistentFlags().StringVarP(&sentinelNamespace, "namespace", "n", "default", "sentinel pod namespace")
 	rootCmd.PersistentFlags().StringVarP(&sentinelContainerName, "container", "c", "", "sentinel container name")
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "kubeconfig used for kubectl, will try to load from $KUBECONFIG first")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "~/.kube/config", "kubeconfig used for kubectl, will try to load from $KUBECONFIG first")
 	klog.InitFlags(nil)
 	pflag.CommandLine.AddGoFlag(flag.CommandLine.Lookup("v"))
 }
-
 
 func main() {
 	Execute()
