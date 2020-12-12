@@ -31,27 +31,51 @@ type RedisPod struct {
 	Name          string
 	Port          int
 	Pod           *corev1.Pod
+	ContainerName string
 	IP            string
 	RoleReported  string
 	Flags         string
 	PortForwarder *common.PortForwarder
+	clientset     *kubernetes.Clientset
+	restcfg       *restclient.Config
 }
 
-func NewSentinelPod(sentinelPodName string, sentinelContainerName string, namespace string, sentinelPort, redisPort int, clientset *kubernetes.Clientset, restcfg *restclient.Config) (*SentinelPod, error) {
-	pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), sentinelPodName, metav1.GetOptions{})
+func NewRedisPod(podName, containerName, namespace string, port int, clientset *kubernetes.Clientset, restcfg *restclient.Config) (*RedisPod, error) {
+	pod, err := common.GetPod(podName, containerName, namespace, clientset, restcfg)
 	if err != nil {
 		return nil, err
 	}
-	if sentinelContainerName != "" {
-		hasContainer := false
-		for _, c := range pod.Spec.Containers {
-			if c.Name == sentinelContainerName {
-				hasContainer = true
-			}
-		}
-		if !hasContainer {
-			return nil, fmt.Errorf("can't find container %s in pod %s", sentinelContainerName, sentinelPodName)
-		}
+	r := new(RedisPod)
+	r.IP = pod.Status.PodIP
+	r.Pod = pod
+	r.Port = port
+	r.clientset = clientset
+	r.restcfg = restcfg
+	return r, nil
+}
+
+func (r *RedisPod) IsSlave() (bool, error) {
+	result, err := r.execute("info replication")
+	if err != nil {
+		return false, err
+	}
+	m := parseRedisInfo(result)
+	return m["role"] == "slave", nil
+}
+
+func (r *RedisPod) execute(cmd string) (string, error) {
+	cmd = fmt.Sprintf("redis-cli -p %d %s", r.Port, cmd)
+	result, err := common.Execute(r.clientset, r.restcfg, &common.ExecTarget{Pod: r.Pod, Container: r.ContainerName}, cmd, false, false)
+	if err != nil {
+		return "", err
+	}
+	return result, nil
+}
+
+func NewSentinelPod(sentinelPodName string, sentinelContainerName string, namespace string, sentinelPort, redisPort int, clientset *kubernetes.Clientset, restcfg *restclient.Config) (*SentinelPod, error) {
+	pod, err := common.GetPod(sentinelPodName, sentinelContainerName, namespace, clientset, restcfg)
+	if err != nil {
+		return nil, err
 	}
 	forwarder := common.NewPortForwarder(clientset, restcfg, pod, sentinelPort, sentinelPort)
 	return &SentinelPod{pod: pod, sentinelContainerName: sentinelContainerName, sentinelPort: sentinelPort,
@@ -258,4 +282,35 @@ func parseRedisInfo(result string) (info map[string]string) {
 		}
 	}
 	return
+}
+
+func Sync(slavePodName, masterPodName, containerName, namespace string, port int, clientset *kubernetes.Clientset, restcfg *restclient.Config, wait bool) error {
+	master, err := NewRedisPod(masterPodName, containerName, namespace, port, clientset, restcfg)
+	if err != nil {
+		return err
+	}
+	slave, err := NewRedisPod(slavePodName, containerName, namespace, port, clientset, restcfg)
+	if err != nil {
+		return err
+	}
+	isSlave, err := master.IsSlave()
+	if err != nil {
+		return err
+	}
+	if isSlave {
+		return fmt.Errorf("target master pod %s's role is slave", masterPodName)
+	}
+	isSlave, err = slave.IsSlave()
+	if err != nil {
+		return err
+	}
+	if isSlave {
+		return fmt.Errorf("target slave pod %s's role is already slave", slavePodName)
+	}
+	r, err := slave.execute(fmt.Sprintf("replicaof %s %d", master.IP, master.Port))
+	if err != nil {
+		return err
+	}
+	fmt.Println(r)
+	return nil
 }

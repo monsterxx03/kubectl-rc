@@ -1,26 +1,27 @@
 package common
 
 import (
-	corev1 "k8s.io/api/core/v1"
-	restclient "k8s.io/client-go/rest"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/remotecommand"
-	"k8s.io/client-go/kubernetes/scheme"
-	"fmt"
-	"os"
-	"io"
 	"bytes"
+	"fmt"
+	"io"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	restclient "k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/remotecommand"
+	"k8s.io/klog/v2"
+	"os"
 )
 
 type ExecTarget struct {
-	Pod *corev1.Pod 
+	Pod       *corev1.Pod
 	Container string
 }
 
 func Execute(clientset *kubernetes.Clientset, restcfg *restclient.Config, target *ExecTarget, cmd string, toStdout, toStdin bool) (string, error) {
 	req := clientset.CoreV1().RESTClient().Post().Resource("pods").Name(target.Pod.Name).Namespace(target.Pod.Namespace).SubResource("exec")
-	fmt.Println(cmd)
-	containerName := target.Pod.Spec.Containers[0].Name 
+	klog.V(2).Info("execute in %s: %s", target.Pod.Name, cmd)
+	containerName := target.Pod.Spec.Containers[0].Name
 	if target.Container != "" {
 		containerName = target.Container
 	}

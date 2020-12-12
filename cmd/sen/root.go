@@ -41,6 +41,7 @@ var sentinelNamespace string
 var sentinelContainerName string
 var sentinelPort int
 var redisPort int
+var redisContainerName string
 var restcfg *restclient.Config
 var clientset *kubernetes.Clientset
 
@@ -84,6 +85,7 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().IntVarP(&sentinelPort, "port", "p", 26379, "redis-sentinel port")
 	rootCmd.PersistentFlags().IntVarP(&redisPort, "redis-port", "", 6379, "redis port")
+	rootCmd.PersistentFlags().StringVarP(&redisContainerName, "redis-container", "", "", "redis cointainer name")
 	rootCmd.PersistentFlags().StringVarP(&sentinelNamespace, "namespace", "n", "default", "sentinel pod namespace")
 	rootCmd.PersistentFlags().StringVarP(&sentinelContainerName, "container", "c", "", "sentinel container name")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "~/.kube/config", "kubeconfig used for kubectl, will try to load from $KUBECONFIG first")
