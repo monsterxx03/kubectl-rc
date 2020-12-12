@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/monsterxx03/kuberc/pkg/common"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -312,5 +314,65 @@ func Sync(slavePodName, masterPodName, containerName, namespace string, port int
 		return err
 	}
 	fmt.Println(r)
+	return nil
+}
+
+func podIsReady(pod corev1.Pod) bool {
+	if pod.Status.Phase != "Running" {
+		return false
+	}
+	for _, s := range pod.Status.ContainerStatuses {
+		if !*s.Started || !s.Ready {
+			return false
+		}
+	}
+	return true
+}
+
+func Restart(sentinelStsName, namespace string, clientset *kubernetes.Clientset, restcfg *restclient.Config) error {
+	ctx := context.Background()
+	sts, err := clientset.AppsV1().StatefulSets(namespace).Get(context.Background(), sentinelStsName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	selector := make([]string, 0, len(sts.Spec.Selector.MatchLabels))
+	for k, v := range sts.Spec.Selector.MatchLabels {
+		selector = append(selector, fmt.Sprintf("%s=%s", k, v))
+	}
+	listOpts := metav1.ListOptions{LabelSelector: strings.Join(selector, ",")}
+	r, err := clientset.CoreV1().Pods(namespace).List(ctx, listOpts)
+	if err != nil {
+		return err
+	}
+	pods := r.Items
+	if len(pods) < 3 {
+		return fmt.Errorf("sts %s pods num(%d) < 3, is it a sentinel sts?", sentinelStsName, len(pods))
+	}
+	for _, pod := range pods {
+		if !podIsReady(pod) {
+			return fmt.Errorf("pod %s is not ready", pod.Name)
+		}
+	}
+	for _, pod := range pods {
+		fmt.Println("delete " + pod.Name)
+		if err := clientset.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{}); err != nil {
+			return err
+		}
+		err := wait.Poll(5*time.Second, 1*time.Minute, func() (bool, error) {
+			p, err := clientset.CoreV1().Pods(namespace).Get(ctx, pod.Name, metav1.GetOptions{})
+			if err != nil {
+				return false, err
+			}
+			if podIsReady(*p) {
+				return true, nil
+			}
+			return false, nil
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Println(pod.Name + " is ready")
+		time.Sleep(5 * time.Second)
+	}
 	return nil
 }
