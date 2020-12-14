@@ -190,7 +190,7 @@ func (r *RedisPod) clusterNodes() (nodes []*RedisNode, err error) {
 
 // ClusterNodes return redis nodes with pod info
 func (r *RedisPod) ClusterNodes() (nodes []*RedisNode, err error) {
-	m, err := r.getPodsInStatefulSet()
+	m, err := r.getPodsInNamespace(r.pod.Namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +227,7 @@ func (r *RedisPod) ClusterSlots() ([]*Slots, error) {
 	if len(lines) < 5 {
 		return nil, fmt.Errorf("wrong slots info %s", result)
 	}
-	m, err := r.getPodsInStatefulSet()
+	m, err := r.getPodsInNamespace(r.pod.Namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -342,6 +342,18 @@ func (r *RedisPod) redisCli(cmd string, raw bool, host string, port int) (string
 	return common.Execute(r.clientset, r.restcfg, &common.ExecTarget{Pod: r.pod, Container: r.redisContainerName}, c, false, false)
 }
 
+
+func (s *RedisPod) getPodsInNamespace(namespace string) (map[string]corev1.Pod, error) {
+	pods, err := s.clientset.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[string]corev1.Pod)
+	for _, pod := range pods.Items {
+		m[pod.Status.PodIP] = pod
+	}
+	return m, nil
+}
 
 func (p *RedisPod) getPodsInStatefulSet() (map[string]corev1.Pod, error) {
 	stsName := ""
