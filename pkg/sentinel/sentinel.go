@@ -1,11 +1,13 @@
 package sentinel
 
 import (
+	"os"
 	"context"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
+	"text/tabwriter"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/monsterxx03/kuberc/pkg/common"
@@ -104,9 +106,12 @@ func (s *SentinelPod) Masters() error {
 	if err != nil {
 		return err
 	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ',tabwriter.AlignRight)
+	fmt.Fprintln(w, "Master Name\tMasterPod\tIP\tSlaves\t")
 	for _, item := range masters {
-		fmt.Println(item)
+		fmt.Fprintln(w, fmt.Sprintf("%s\t%s\t%s\t%d\t", item.Name, item.GetPodName(), item.IP, item.NumSlaves))
 	}
+	w.Flush()
 	return nil
 }
 

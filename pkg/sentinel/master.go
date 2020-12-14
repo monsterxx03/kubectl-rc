@@ -26,10 +26,13 @@ func (m *MasterPod) PrettyPrint() {
 	}
 }
 
-func (m *MasterPod) String() string {
-	pname := ""
+func (m *MasterPod) GetPodName() string {
 	if m.Pod != nil {
-		pname = m.Pod.Name
+		return m.Pod.Name
 	}
-	return fmt.Sprintf("Master<%s: %s, %s, %d slaves>", m.Name, pname, m.IP, m.NumSlaves)
+	return ""
+}
+
+func (m *MasterPod) String() string {
+	return fmt.Sprintf("Master<%s: %s, %s, %d slaves>", m.Name, m.GetPodName(), m.IP, m.NumSlaves)
 }
