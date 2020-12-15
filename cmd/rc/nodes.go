@@ -25,9 +25,6 @@ import (
 	"fmt"
 	"github.com/monsterxx03/kuberc/pkg/redis"
 	"github.com/spf13/cobra"
-	"os"
-	"sort"
-	"text/tabwriter"
 )
 
 // nodesCmd represents the nodes command
@@ -40,18 +37,35 @@ var nodesCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if nodes, err := p.ClusterNodes(); err != nil {
+		nodes, err := p.ClusterNodes()
+		if err != nil {
 			return err
-		} else {
-			sort.Slice(nodes, func(i, j int) bool {
-				return nodes[i].Pod.GetName() < nodes[j].Pod.GetName()
-			})
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight)
-			fmt.Fprintln(w, "Pod\tIP\tNodeID\tHost\tIsMaster\tSlots\t")
-			for _, n := range nodes {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%t\t%d\t\n", n.Pod.Name, n.IP, n.ID, n.Pod.Spec.NodeName, n.IsMaster(), n.SlotsCount())
+		}
+		masterMap := make(map[string]*redis.RedisNode)
+		slaveGroups := make(map[*redis.RedisNode][]*redis.RedisNode)
+		for _, n := range nodes {
+			if n.IsMaster() {
+				masterMap[n.ID] = n
 			}
-			w.Flush()
+		}
+		for _, n := range nodes {
+			if !n.IsMaster() {
+				m := masterMap[n.MasterID]
+				_, ok := slaveGroups[m]
+				if ok {
+					slaveGroups[m] = append(slaveGroups[m], n)
+				} else {
+					slaveGroups[m] = []*redis.RedisNode{n}
+				}
+			}
+		}
+		for _, m := range masterMap {
+			fmt.Println("Master:",masterMap[m.ID])
+			if len(slaveGroups[m]) > 0 {
+				for _, s := range slaveGroups[m] {
+					fmt.Println("\t Slave:", s)
+				}
+			}
 		}
 		return nil
 	},

@@ -15,6 +15,7 @@ type RedisNode struct {
 	Pod       *corev1.Pod
 	IP        string
 	Flags     []string
+	MasterID  string
 	Epoch     int
 	LinkState string
 	Slots     []string
@@ -53,6 +54,10 @@ func NewRedisNode(info string) *RedisNode {
 	parts := strings.Split(info, " ")
 	ip := strings.Split(parts[1], ":")[0]
 	flags := strings.Split(parts[2], ",")
+	masterID := ""
+	if parts[3] != "-" {
+		masterID = parts[3] 
+	}
 	epoch, _ := strconv.Atoi(parts[6])
 	slots := make([]string, 0, 1)
 	for _, slot := range parts[8:] {
@@ -62,6 +67,7 @@ func NewRedisNode(info string) *RedisNode {
 		ID:        parts[0],
 		IP:        ip,
 		Flags:     flags,
+		MasterID: masterID,
 		Epoch:     epoch,
 		LinkState: parts[7],
 		Slots:     slots,

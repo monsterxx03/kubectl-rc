@@ -316,11 +316,7 @@ func (r *RedisPod) ClusterAddNode(newPod *RedisPod, slave bool) (result string, 
 	return
 }
 
-func (r *RedisPod) ClusterDelNode() (result string, err error) {
-	nodeID, err := r.GetNodeID()
-	if err != nil {
-		return "", err
-	}
+func (r *RedisPod) ClusterDelNode(nodeID string) (result string, err error) {
 	return r.redisCliCluster(fmt.Sprintf("del-node %s:%d %s", r.GetIP(), r.port, nodeID), false, false)
 }
 
