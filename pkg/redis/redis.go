@@ -25,20 +25,9 @@ type RedisPod struct {
 }
 
 func NewRedisPod(podname string, redisContainerName string, namespace string, port int, clientset *kubernetes.Clientset, restcfg *restclient.Config) (*RedisPod, error) {
-	pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podname, metav1.GetOptions{})
+	pod, err := common.GetPod(podname, redisContainerName, namespace, clientset, restcfg)
 	if err != nil {
 		return nil, err
-	}
-	if redisContainerName != "" {
-		hasContainer := false
-		for _, c := range pod.Spec.Containers {
-			if c.Name == redisContainerName {
-				hasContainer = true
-			}
-		}
-		if !hasContainer {
-			return nil, fmt.Errorf("can't find container %s in pod %s", redisContainerName, podname)
-		}
 	}
 	return &RedisPod{pod: pod, redisContainerName: redisContainerName, port: port, clientset: clientset, restcfg: restcfg}, nil
 }
