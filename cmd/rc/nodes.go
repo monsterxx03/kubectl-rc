@@ -23,6 +23,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"github.com/monsterxx03/kuberc/pkg/redis"
 	"github.com/spf13/cobra"
 )
@@ -43,11 +44,20 @@ var nodesCmd = &cobra.Command{
 		}
 		masterMap := make(map[string]*redis.RedisNode)
 		slaveGroups := make(map[*redis.RedisNode][]*redis.RedisNode)
+		masterNodes := make([]*redis.RedisNode, 0)
+		// node id map
 		for _, n := range nodes {
 			if n.IsMaster() {
 				masterMap[n.ID] = n
+				masterNodes = append(masterNodes, n)
 			}
 		}
+		// sort
+		sort.Slice(masterNodes, func(i, j int) bool {
+			return masterNodes[i].Pod.Name < masterNodes[j].Pod.Name
+		})
+
+		// master slave map
 		for _, n := range nodes {
 			if !n.IsMaster() {
 				m := masterMap[n.MasterID]
@@ -59,8 +69,8 @@ var nodesCmd = &cobra.Command{
 				}
 			}
 		}
-		for _, m := range masterMap {
-			fmt.Println("Master:",masterMap[m.ID])
+		for _, m := range masterNodes {
+			fmt.Println("Master:", m)
 			if len(slaveGroups[m]) > 0 {
 				for _, s := range slaveGroups[m] {
 					fmt.Println("\t Slave:", s)
