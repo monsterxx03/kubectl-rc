@@ -1,6 +1,7 @@
-##  kubectl plugin for managing redis cluster
+##  kubectl plugin for managing redis cluster & and redis sentinel
 
-Operate on k8s pods, not confusing ip and node id in redis-cluster.
+- kubectl-rc: manage redis cluster on k8s
+- kubectl-sen: manage sentinel based redis master/slave on k8s
 
 ### Install
 
@@ -29,11 +30,36 @@ kubectl rc help
 
         Flags:
               --config string      kubeconfig used for kubectl, will try to load from $KUBECONFIG first
+          -c, --container string   container name
           -h, --help               help for rc
           -n, --namespace string   namespace (default "default")
           -p, --port int           redis port (default 6379)
 
-### Example
+kubectl sen help
+
+    Usage:
+      sen [command]
+
+    Available Commands:
+      failover    Failover redis to slave pod
+      help        Help about any command
+      master      Show redis master pod info
+      masters     List redis masters
+      restart     restart pods in sentinel sts one by one
+      sync        make <slave-pod> slave of <master-pod>
+
+    Flags:
+          --config string            kubeconfig used for kubectl, will try to load from $KUBECONFIG first (default "~/.kube/config")
+      -c, --container string         sentinel container name
+      -h, --help                     help for sen
+      -n, --namespace string         sentinel pod namespace (default "default")
+      -p, --port int                 redis-sentinel port (default 26379)
+          --redis-container string   redis cointainer name
+          --redis-port int           redis port (default 6379)
+      -v, --v Level                  number for the log level verbosity
+
+
+### kubectl-rc example
 
 Create cluster:
 
@@ -69,3 +95,23 @@ Add new redis pod `rc-3` into redis cluster as slave of `rc-0`
 Rebalance between all redis pods:
 
     >> kubectl rc rebalance rc-0 --pipeline 100 --use-empty-masters
+
+### kubectl-sen example
+
+Show all redis masters monitored by sentinel:
+    
+    >> kubectl sen masters sentinel-pod-0
+     Master Name    MasterPod           IP Slaves
+    test-master1     tm1-0   10.0.33.11      1
+    test-master2     tm2-0   10.0.31.13      1
+
+Show detail info:
+
+    >> kubectl sen master sentinel-pod-0 test-master1
+        Master Name: test-master1
+        Master Pod: tm1-0
+        IP: 10.0.33.11
+        Flags: master
+        Num Slaves 1
+        Slaves:
+            Pod:ts1-0, IP:10.0.43.12, Flags:slave, LinkStatus:up, IOSecAgo:0, InSync:0
